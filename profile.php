@@ -268,7 +268,7 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
               <label><svg viewBox="0 0 24 24"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>Course</label>
               <select name="course" required>
                 <option value="">Select course</option>
-                <?php foreach(['BSIT','BSCS','BSDA','ACT'] as $c): $cur=$student['course']??$_SESSION['course']??''; ?>
+                <?php foreach(['BSIT','BSCS'] as $c): $cur=$student['course']??$_SESSION['course']??''; ?>
                   <option value="<?=$c?>" <?=$cur===$c?'selected':''?>><?=$c?></option>
                 <?php endforeach; ?>
               </select>

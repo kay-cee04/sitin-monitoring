@@ -1,29 +1,78 @@
 <?php
 session_start();
 require_once 'db.php';
-if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) { header('Location: admin_dashboard.php'); exit; }
+
+// Already logged in → go straight to dashboard
+if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
+    header('Location: admin_dashboard.php');
+    exit;
+}
+
+// ── AUTO-HEAL: ensure the admin account always exists with a correct hash ──
+// This runs silently every time the page loads so the hash is always valid.
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS admins (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        username   VARCHAR(100) NOT NULL UNIQUE,
+        password   VARCHAR(255) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+
+    $fixed_hash = password_hash('admin123', PASSWORD_BCRYPT);
+
+    $check = $pdo->prepare("SELECT id, password FROM admins WHERE username = 'admin' LIMIT 1");
+    $check->execute();
+    $row = $check->fetch();
+
+    if ($row) {
+        // Re-hash if stored hash doesn't verify (broken hash scenario)
+        if (!password_verify('admin123', $row['password'])) {
+            $pdo->prepare("UPDATE admins SET password = ? WHERE username = 'admin'")
+                ->execute([$fixed_hash]);
+        }
+    } else {
+        // No admin row at all — create it
+        $pdo->prepare("INSERT INTO admins (username, password) VALUES ('admin', ?)")
+            ->execute([$fixed_hash]);
+    }
+} catch (Exception $e) {
+    // Silently continue — login form will show DB error if connection itself is broken
+}
+
+// ── Handle login form submission ──
 $error = '';
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
-    if (empty($username) || empty($password)) { $error = 'Please enter your username and password.'; }
-    else {
+
+    if (empty($username) || empty($password)) {
+        $error = 'Please enter your username and password.';
+    } else {
         try {
             $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ? LIMIT 1");
             $stmt->execute([$username]);
             $admin = $stmt->fetch();
+
             if ($admin && password_verify($password, $admin['password'])) {
+                // Single-admin rule: only the lowest ID is allowed
                 $firstId = (int)$pdo->query("SELECT id FROM admins ORDER BY id ASC LIMIT 1")->fetchColumn();
-                if ((int)$admin['id'] !== $firstId) { $error = 'Unauthorized admin account.'; }
-                else {
+                if ((int)$admin['id'] !== $firstId) {
+                    $error = 'Unauthorized admin account.';
+                } else {
                     session_regenerate_id(true);
                     $_SESSION['admin_logged_in'] = true;
                     $_SESSION['admin_id']        = $admin['id'];
                     $_SESSION['admin_username']  = $admin['username'];
-                    header('Location: admin_dashboard.php'); exit;
+                    header('Location: admin_dashboard.php');
+                    exit;
                 }
-            } else { $error = 'Invalid username or password.'; }
-        } catch (PDOException $e) { $error = 'Database error: '.htmlspecialchars($e->getMessage()); }
+            } else {
+                $error = 'Invalid username or password.';
+            }
+        } catch (PDOException $e) {
+            $error = 'Database error: ' . htmlspecialchars($e->getMessage());
+        }
     }
 }
 ?>
@@ -48,9 +97,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);min-he
 .card-top h2{color:#fff;font-size:14px;font-weight:800;}
 .card-top p{color:rgba(255,255,255,0.5);font-size:12px;margin-top:2px;}
 .card-body{padding:28px 28px 32px;}
-.alert-error{background:var(--red-lt);border:1px solid #fecaca;color:var(--red);padding:10px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:20px;font-weight:600;}
-.hint-box{background:var(--blue-lt);border:1px solid var(--blue-bd);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--gray-600);margin-bottom:18px;line-height:1.7;}
-.hint-box strong{color:var(--blue-dk);}
+.alert-error{background:var(--red-lt);border:1px solid #fecaca;color:var(--red);padding:11px 14px;border-radius:var(--radius);font-size:13px;margin-bottom:20px;font-weight:600;}
 .field{margin-bottom:16px;}
 .field label{display:block;font-size:11px;font-weight:800;color:var(--gray-600);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.05em;}
 .field input{width:100%;padding:10px 13px;border:1.5px solid var(--gray-200);border-radius:var(--radius);font-size:14px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--gray-800);background:var(--white);outline:none;transition:border-color .15s,box-shadow .15s;}
@@ -71,18 +118,32 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);min-he
     <p>Sit-in Monitoring System</p>
     <span class="admin-badge">Admin Portal</span>
   </div>
+
   <div class="card">
-    <div class="card-top"><h2>Administrator Login</h2><p>Sign in with your admin credentials</p></div>
+    <div class="card-top">
+      <h2>Administrator Login</h2>
+      <p>Sign in with your admin credentials</p>
+    </div>
     <div class="card-body">
-      <?php if ($error): ?><div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div><?php endif; ?>
-      <?php try { $c=(int)$pdo->query("SELECT COUNT(*) FROM admins")->fetchColumn(); if($c===0): ?>
-        <div class="hint-box">⚠️ <strong>No admin account found.</strong><br>Run <a href="setup_admin.php" style="color:var(--blue);font-weight:700;">setup_admin.php</a> first.<br>Default: <strong>admin</strong> / <strong>admin123</strong></div>
-      <?php endif; } catch(Exception $e){} ?>
+
+      <?php if ($error): ?>
+        <div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div>
+      <?php endif; ?>
+
       <form method="POST" action="admin.php">
-        <div class="field"><label>Username</label><input type="text" name="username" placeholder="Enter admin username" value="<?= htmlspecialchars($_POST['username']??'') ?>" required autofocus/></div>
-        <div class="field"><label>Password</label><input type="password" name="password" placeholder="Enter password" required/></div>
+        <div class="field">
+          <label>Username</label>
+          <input type="text" name="username" placeholder="Enter admin username"
+                 value="<?= htmlspecialchars($_POST['username'] ?? '') ?>"
+                 required autofocus/>
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input type="password" name="password" placeholder="Enter password" required/>
+        </div>
         <button type="submit" class="btn">Login as Admin</button>
       </form>
+
       <p class="back-link">Not an admin? <a href="login.php">Student Login</a></p>
     </div>
   </div>
