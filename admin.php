@@ -141,7 +141,7 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);min-he
           <label>Password</label>
           <input type="password" name="password" placeholder="Enter password" required/>
         </div>
-        <button type="submit" class="btn">Login as Admin</button>
+        <button type="submit" class="btn">Log In</button>
       </form>
 
       <p class="back-link">Not an admin? <a href="login.php">Student Login</a></p>

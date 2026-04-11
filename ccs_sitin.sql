@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS sit_in_history (
     fullname        VARCHAR(255)NOT NULL,
     sit_purpose     VARCHAR(255)NOT NULL,
     laboratory      VARCHAR(50) NOT NULL,
-    login_time      TIME        DEFAULT NULL,
-    logout_time     TIME        DEFAULT NULL,
+    login_time      DATETIME    DEFAULT NULL,
+    logout_time     DATETIME    DEFAULT NULL,
     date            DATE        NOT NULL,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
@@ -109,9 +109,9 @@ INSERT INTO announcements (admin_name, content, created_at) VALUES
 
 -- Sample sit-in history
 INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, logout_time, date) VALUES
-(1, '2024-00001', 'Juan Santos Dela Cruz',     'C Programming',    '524', '08:00:00', '10:00:00', CURDATE()),
-(2, '2024-00002', 'Maria Garcia Reyes',        'Web Development',  '526', '09:00:00', '11:00:00', CURDATE()),
-(3, '2024-00003', 'Jose Ramos Santos',         'Database Systems', '524', '13:00:00', '15:00:00', CURDATE());
+(1, '2024-00001', 'Juan Santos Dela Cruz',     'C Programming',    '524', '2026-04-11 08:00:00', '2026-04-11 10:00:00', CURDATE()),
+(2, '2024-00002', 'Maria Garcia Reyes',        'Web Development',  '526', '2026-04-11 09:00:00', '2026-04-11 11:00:00', CURDATE()),
+(3, '2024-00003', 'Jose Ramos Santos',         'Database Systems', '524', '2026-04-11 13:00:00', '2026-04-11 15:00:00', CURDATE());
 
 -- ============================================================
 --  LOGIN CREDENTIALS SUMMARY

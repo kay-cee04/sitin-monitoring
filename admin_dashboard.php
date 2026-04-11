@@ -16,9 +16,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Post announcement
     if (isset($_POST['add_announcement'])) {
-        $content = trim($_POST['content'] ?? '');
+        $content    = trim($_POST['content'] ?? '');
+        $admin_name = $_SESSION['admin_username'];
         $pdo->prepare("INSERT INTO announcements (admin_name, content) VALUES (?, ?)")
-            ->execute([$_SESSION['admin_username'], $content ?: null]);
+            ->execute([$admin_name, $content ?: null]);
+
+        // Push a notification to every student
+        $notif_msg    = '📢 New announcement from ' . $admin_name . ($content ? ': ' . mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '…' : '') : '.');
+        $all_students = $pdo->query("SELECT id FROM students")->fetchAll();
+        $ins = $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)");
+        foreach ($all_students as $stu) {
+            $ins->execute([$stu['id'], $notif_msg]);
+        }
+
         header('Location: admin_dashboard.php?page=home&msg=announced'); exit;
     }
 
@@ -333,7 +343,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
     <a href="#"                 onclick="openModal('searchModal');return false;">Search</a>
     <a href="?page=students"    class="<?= $page==='students'    ?'active':'' ?>">Students</a>
     <a href="#" class="<?= $page==='sitin' ? 'active' : '' ?>" onclick="openBlankSitin(); return false;">Sit-in</a>
-    <a href="?page=records"     class="<?= $page==='records'     ?'active':'' ?>">View Sit-in Records</a>
+    <a href="admin_sitin_history.php"     class="">View Sit-in History</a>
     <a href="?page=reports"     class="<?= $page==='reports'     ?'active':'' ?>">Sit-in Reports</a>
     <a href="?page=feedback"    class="<?= $page==='feedback'    ?'active':'' ?>">Feedback Reports</a>
     <a href="?page=reservation" class="<?= $page==='reservation' ?'active':'' ?>">Reservation</a>
@@ -402,7 +412,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
         <div class="ann-form">
           <form method="POST">
             <textarea name="content" placeholder="New Announcement"></textarea>
-            <button type="submit" name="add_announcement" class="btn-submit">Submit</button>
+            <button type="submit" name="add_announcement" class="btn-submit">Post Announcement</button>
           </form>
         </div>
         <div class="ann-posted-title">Posted Announcement</div>
@@ -694,7 +704,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
   </div>
 </div>
 
-<!-- ════════════ RESERVATION ════════════ -->
+<!-- ════════════ RESERVATION ════════════ 
 <div id="page-reservation" class="page-section <?= $page==='reservation'?'active':'' ?>">
   <div class="page-title">Reservations</div>
   <div class="toolbar">
@@ -742,7 +752,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
   </div>
 </div>
 
-</div><!-- end page-body -->
+</div>-- end page-body -->
 
 <!-- ══════════════════════════════════════
      MODALS

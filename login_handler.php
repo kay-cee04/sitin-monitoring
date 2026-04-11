@@ -40,6 +40,30 @@ if ($student && password_verify($password, $student['password'])) {
     $_SESSION['address']    = $student['address'];
     $_SESSION['session']    = $student['session'];
 
+    // ── Create sit-in record on login ──
+    // Check if there's an active session (logout_time IS NULL) for today
+    $active_session = $pdo->prepare(
+        "SELECT id FROM sit_in_history 
+         WHERE student_id = ? AND date = CURDATE() AND logout_time IS NULL LIMIT 1"
+    );
+    $active_session->execute([$student['id']]);
+    $has_active = $active_session->fetch();
+    
+    // Only create new record if no active session exists
+    if (!$has_active) {
+        $pdo->prepare(
+            "INSERT INTO sit_in_history 
+             (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date) 
+             VALUES (?, ?, ?, ?, ?, NOW(), CURDATE())"
+        )->execute([
+            $student['id'],
+            $student['id_number'],
+            $_SESSION['fullname'],
+            'Self-Service Login',  // Default purpose - user can update later
+            '000'  // Default lab - user can specify when logging in
+        ]);
+    }
+
     header('Location: Homepage.php');
     exit;
 } else {
