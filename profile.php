@@ -1,14 +1,25 @@
 <?php
 session_start();
-if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) { header('Location: login.php'); exit; }
+if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
+    header('Location: login.php'); exit;
+}
 require_once 'db.php';
+
+$student_id = (int)$_SESSION['student_id'];
+
+// Handle mark-all-read
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mark_notif_read'])) {
+    $pdo->prepare("UPDATE notifications SET is_read = 1 WHERE student_id = ? AND is_read = 0")
+        ->execute([$student_id]);
+    header('Location: profile.php'); exit;
+}
 
 $success = $_SESSION['profile_success'] ?? '';
 $error   = $_SESSION['profile_error']   ?? '';
 unset($_SESSION['profile_success'], $_SESSION['profile_error']);
 
 $stmt = $pdo->prepare("SELECT * FROM students WHERE id = ? LIMIT 1");
-$stmt->execute([$_SESSION['student_id']]);
+$stmt->execute([$student_id]);
 $student = $stmt->fetch();
 
 if ($student && isset($student['profile_photo'])) {
@@ -19,6 +30,20 @@ $photoSrc = (!empty($_SESSION['profile_photo']))
     ? 'uploads/profiles/' . htmlspecialchars($_SESSION['profile_photo'])
     : null;
 
+// Fetch notifications
+try {
+    $notif_stmt = $pdo->prepare("SELECT id, message, is_read, created_at FROM notifications WHERE student_id = ? ORDER BY created_at DESC LIMIT 30");
+    $notif_stmt->execute([$student_id]);
+    $notifications = $notif_stmt->fetchAll();
+} catch (PDOException $e) {
+    $notifications = [];
+}
+$unread_count = count(array_filter($notifications, fn($n) => $n['is_read'] == 0));
+
+function stripLeadingEmoji(string $s): string {
+    return trim(preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $s));
+}
+
 function val($student, $key, $session_key = null) {
     if ($student && isset($student[$key]) && $student[$key] !== '') return htmlspecialchars($student[$key]);
     $sk = $session_key ?? $key;
@@ -28,11 +53,19 @@ function val($student, $key, $session_key = null) {
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
 <title>CCS | Edit Profile</title>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
-:root{--blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;--gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-400:#8aaac8;--gray-600:#3d607f;--gray-800:#1a2e45;--white:#fff;--radius:8px;--radius-lg:12px;--shadow:0 1px 4px rgba(0,58,107,0.08);--shadow-md:0 4px 20px rgba(0,58,107,0.12);--red:#dc2626;--red-lt:#fef2f2;--green:#16a34a;--green-lt:#f0fdf4;}
+:root{
+  --blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;
+  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-400:#8aaac8;
+  --gray-600:#3d607f;--gray-800:#1a2e45;--white:#fff;
+  --radius:8px;--radius-lg:12px;
+  --shadow:0 1px 4px rgba(0,58,107,0.08);--shadow-md:0 4px 20px rgba(0,58,107,0.12);
+  --red:#dc2626;--red-lt:#fef2f2;--green:#16a34a;--green-lt:#f0fdf4;
+}
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);min-height:100vh;font-size:14px;}
 
@@ -43,41 +76,56 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .nav-links a{font-size:13px;font-weight:500;color:rgba(255,255,255,0.75);text-decoration:none;padding:6px 11px;border-radius:6px;transition:all .15s;white-space:nowrap;}
 .nav-links a:hover{color:#fff;background:rgba(255,255,255,0.1);}
 .nav-links a.active{color:#89CFF1;font-weight:600;}
-.nav-dropdown{position:relative;}
-.nav-dropdown>a{display:flex;align-items:center;gap:4px;}
-.nav-dropdown>a .chevron{font-size:10px;color:rgba(255,255,255,0.4);transition:transform .2s;}
-.nav-dropdown:hover>a .chevron{transform:rotate(180deg);}
-.dropdown-menu{display:none;position:absolute;top:calc(100% + 8px);left:0;background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow-md);min-width:180px;z-index:200;overflow:hidden;}
-.nav-dropdown:hover .dropdown-menu{display:block;}
-.dropdown-menu a{display:block;padding:9px 16px;font-size:13px;color:var(--gray-600) !important;background:transparent !important;border-radius:0 !important;}
-.dropdown-menu a:hover{background:var(--gray-50) !important;color:var(--blue) !important;}
 .btn-logout{background:#e53e3e !important;color:#fff !important;font-weight:700 !important;border-radius:6px;padding:6px 16px !important;margin-left:6px;}
 .btn-logout:hover{background:#c53030 !important;}
+
+/* NOTIFICATION BELL */
+.notif-wrap{position:relative;}
+.notif-btn{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:rgba(255,255,255,0.75);background:none;border:none;cursor:pointer;padding:6px 11px;border-radius:6px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;}
+.notif-btn:hover{color:#fff;background:rgba(255,255,255,0.1);}
+.bell-wrap{position:relative;display:inline-flex;align-items:center;}
+.red-dot{position:absolute;top:-3px;right:-4px;width:9px;height:9px;background:#e53e3e;border-radius:50%;border:2px solid var(--blue-dk);animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.7;transform:scale(1.25);}}
+.notif-badge{background:#e53e3e;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0 4px;}
+.notif-badge.show{display:flex;}
+.notif-dropdown{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);width:320px;z-index:300;overflow:hidden;}
+.notif-dropdown.open{display:block;}
+.notif-head{background:var(--blue);padding:11px 16px;display:flex;align-items:center;justify-content:space-between;}
+.notif-head-title{color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px;}
+.notif-mark{background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;padding:4px 10px;border-radius:5px;cursor:pointer;transition:background .15s;}
+.notif-mark:hover{background:rgba(255,255,255,0.28);}
+.notif-caught{font-size:11px;color:rgba(255,255,255,0.5);}
+.notif-list{max-height:380px;overflow-y:auto;background:var(--white);}
+.notif-list::-webkit-scrollbar{width:4px;}
+.notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
+.notif-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;}
+.notif-item:last-child{border-bottom:none;}
+.notif-item:hover{background:var(--gray-50);}
+.notif-dot{width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:5px;}
+.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-200);}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-title{font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.4;}
+.notif-msg{font-size:12px;color:var(--gray-400);line-height:1.4;font-weight:400;}
+.announcement-highlight{color:#000;font-weight:700;}
+.notif-time-right{font-size:12px;color:var(--gray-400);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
+.notif-empty{padding:28px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
 /* PAGE */
 .page-body{max-width:920px;margin:0 auto;padding:36px 20px 70px;}
 .page-header{text-align:center;margin-bottom:28px;}
 .page-header h1{font-size:23px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;}
 .page-header p{font-size:13px;color:var(--gray-400);margin-top:4px;}
-
-/* ALERTS */
 .alert{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius);font-size:13.5px;font-weight:600;margin-bottom:22px;}
 .alert svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
 .alert-success{background:var(--green-lt);border:1px solid #bbf7d0;color:var(--green);}
 .alert-success svg{stroke:var(--green);}
 .alert-error{background:var(--red-lt);border:1px solid #fecaca;color:var(--red);}
 .alert-error svg{stroke:var(--red);}
-
-/* LAYOUT */
 .profile-layout{display:grid;grid-template-columns:270px 1fr;gap:22px;align-items:start;}
-
-/* SHARED CARD */
 .card{background:var(--white);border-radius:var(--radius-lg);border:1px solid var(--gray-200);box-shadow:var(--shadow-md);overflow:hidden;}
 .card-head{background:var(--blue);padding:13px 18px;}
 .card-head h3{color:#fff;font-size:13px;font-weight:700;}
 .card-head p{color:rgba(255,255,255,0.55);font-size:12px;margin-top:2px;}
-
-/* PHOTO CARD */
 .photo-body{padding:24px 20px 26px;display:flex;flex-direction:column;align-items:center;gap:14px;}
 .avatar-wrap{position:relative;width:116px;height:116px;}
 .avatar-circle{width:116px;height:116px;border-radius:50%;border:3px solid var(--blue-bd);box-shadow:0 4px 16px rgba(0,58,107,0.15);background:linear-gradient(135deg,var(--blue-lt),#d0e7f5);display:flex;align-items:center;justify-content:center;overflow:hidden;}
@@ -99,14 +147,10 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .btn-upload{width:100%;padding:9px;border:none;border-radius:var(--radius);background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px;}
 .btn-upload:hover{background:var(--blue-dk);}
 .btn-upload svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-
-/* FORM CARD */
 .form-body{padding:26px 28px 30px;}
 .section-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:var(--blue);padding-bottom:8px;border-bottom:1px solid var(--gray-100);margin-bottom:14px;margin-top:22px;}
 .section-label:first-of-type{margin-top:0;}
 .section-label .note{font-weight:400;text-transform:none;font-size:11px;color:var(--gray-400);margin-left:6px;letter-spacing:0;}
-
-/* FIELDS */
 .field{margin-bottom:14px;}
 .field label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--gray-600);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;}
 .field label svg{width:13px;height:13px;stroke:var(--gray-400);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0;}
@@ -143,14 +187,61 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
 <nav>
   <div class="nav-brand">Dashboard</div>
   <div class="nav-links">
-    <div class="nav-dropdown">
-      <a href="#">Notification <span class="chevron">▾</span></a>
-      <div class="dropdown-menu">
-        <a href="#">All Notifications</a>
-        <a href="#">Unread</a>
-        <a href="#">Mark all as read</a>
+
+    <!-- NOTIFICATION BELL -->
+    <div class="notif-wrap">
+      <button class="notif-btn" onclick="toggleNotif()" id="notifBtn">
+        <span class="bell-wrap">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+            <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+          </svg>
+          <?php if ($unread_count > 0): ?><span class="red-dot" id="redDot"></span><?php endif; ?>
+        </span>
+        Notifications
+        <span class="notif-badge <?= $unread_count > 0 ? 'show' : '' ?>" id="notifBadge">
+          <?= $unread_count > 0 ? ($unread_count > 99 ? '99+' : $unread_count) : '' ?>
+        </span>
+      </button>
+      <div class="notif-dropdown" id="notifDropdown">
+        <div class="notif-head">
+          <span class="notif-head-title">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
+            Notifications
+          </span>
+          <span id="notifHeadRight">
+            <?php if ($unread_count > 0): ?>
+              <form method="POST" action="profile.php" style="margin:0;">
+                <input type="hidden" name="mark_notif_read" value="1"/>
+                <button type="submit" class="notif-mark">Mark all read</button>
+              </form>
+            <?php else: ?>
+              <span class="notif-caught">All caught up &#10003;</span>
+            <?php endif; ?>
+          </span>
+        </div>
+        <div class="notif-list" id="notifList">
+          <?php if (empty($notifications)): ?>
+            <div class="notif-empty">No notifications yet.</div>
+          <?php else: ?>
+            <?php foreach ($notifications as $n):
+              $msg = stripLeadingEmoji($n['message']);
+            ?>
+              <div class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+                <div class="notif-content">
+                  <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
+                  <div class="notif-time" data-ts="<?= (int)strtotime($n['created_at']) ?>"></div>
+                </div>
+              </div>
+            <?php endforeach; ?>
+          <?php endif; ?>
+        </div>
       </div>
     </div>
+
     <a href="Homepage.php">Home</a>
     <a href="profile.php" class="active">Edit Profile</a>
     <a href="history.php">History</a>
@@ -205,7 +296,7 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
           <div class="upload-zone" id="uploadZone">
             <div class="uz-icon"><svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></div>
             <div class="uz-label">Click or drag photo here</div>
-            <div class="uz-hint">JPG, PNG, WEBP · Max 2 MB</div>
+            <div class="uz-hint">JPG, PNG, WEBP &middot; Max 2 MB</div>
             <input type="file" name="profile_photo" id="photo_file" accept="image/*"/>
           </div>
           <div id="photo-selected"></div>
@@ -324,31 +415,168 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
 </div>
 
 <script>
-const EYE_OPEN   = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
-const EYE_CLOSED = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTIFICATION SYSTEM — EDIT PROFILE PAGE
+// ═══════════════════════════════════════════════════════════════════════════
+// Timestamps display: "2m ago", "5h ago", "3d ago", "Jan 15, 2026"
+// Updates every 60 seconds, polls every 30 seconds
+// MySQL datetime fixed with .replace(' ','T') for Safari/Firefox
+// Emoji stripped from messages before display
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── RELATIVE TIME ─────────────────────────────────────────────
+function relTime(ts) {
+  var diff = Math.floor(Date.now() / 1000) - ts;
+  if (diff < 60)     return 'Just now';
+  if (diff < 3600)   return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400)  return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  var d = new Date(ts * 1000);
+  return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+}
+
+function refreshTimestamps() {
+  document.querySelectorAll('.notif-time[data-ts]').forEach(function(el) {
+    el.textContent = relTime(parseInt(el.getAttribute('data-ts')));
+  });
+}
+refreshTimestamps();
+
+// Initial poll on page load
+window.addEventListener('load', function() {
+  pollNotifications();
+});
+
+// ── STRIP LEADING EMOJI ──────────────────────────────────────
+function stripEmoji(str) {
+  return str.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{FE00}-\u{FEFF}\u{1F300}-\u{1F9FF}\s]+/gu, '').trim();
+}
+
+// ── POLL FOR NEW NOTIFICATIONS ────────────────────────────────
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function parseNotification(msg) {
+  msg = stripEmoji(msg);
+  if (msg.includes('New announcement from')) {
+    var parts = msg.split(': ');
+    return {
+      title: parts[0],
+      desc: parts[1] ? parts[1].substring(0, 85) : '',
+    };
+  }
+  return {
+    title: msg.substring(0, 45),
+    desc: msg.substring(45, 100),
+  };
+}
+function highlightAnnouncementTitle(title) {
+  if (title.includes('New announcement from')) {
+    return '<span class="announcement-highlight">' + escHtml(title) + '</span>';
+  }
+  return title;
+}
+function formatRelTime(created_at) {
+  var ts = Math.floor(new Date(created_at.replace(' ','T')).getTime() / 1000);
+  var now = Math.floor(Date.now() / 1000);
+  var diff = now - ts;
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  return 'Long ago';
+}
+
+function renderNotifItem(n) {
+  var notif = parseNotification(n.message);
+  var relTime = formatRelTime(n.created_at);
+  var title = highlightAnnouncementTitle(escHtml(notif.title));
+  var desc = escHtml(notif.desc);
+  var cls = parseInt(n.is_read) === 0 ? 'notif-item unread' : 'notif-item read';
+  return '<div class="' + cls + '" data-id="' + n.id + '">'
+       + '<div class="notif-dot"></div>'
+       + '<div class="notif-content">'
+       + '<div class="notif-title">' + title + '</div>'
+       + (desc ? '<div class="notif-msg">' + desc + '</div>' : '')
+       + '</div>'
+       + '<div class="notif-time-right">' + relTime + '</div>'
+       + '</div>';
+}
+
+function pollNotifications() {
+  fetch('notification_ajax.php?action=fetch')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (!data || !data.notifications) return;
+      var list      = document.getElementById('notifList');
+      var badge     = document.getElementById('notifBadge');
+      var headRight = document.getElementById('notifHeadRight');
+      list.innerHTML = data.notifications.length
+        ? data.notifications.map(renderNotifItem).join('')
+        : '<div class="notif-empty">No notifications yet.</div>';
+      refreshTimestamps();
+      var unread = data.notifications.filter(function(n){ return parseInt(n.is_read) === 0; }).length;
+      if (unread > 0) {
+        badge.textContent = unread > 99 ? '99+' : unread;
+        badge.classList.add('show');
+        if (!document.getElementById('redDot')) {
+          var dot = document.createElement('span');
+          dot.className = 'red-dot'; dot.id = 'redDot';
+          document.querySelector('.bell-wrap').appendChild(dot);
+        }
+        headRight.innerHTML = '<form method="POST" action="profile.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
+      } else {
+        badge.textContent = ''; badge.classList.remove('show');
+        var dot = document.getElementById('redDot'); if (dot) dot.remove();
+        headRight.innerHTML = '<span class="notif-caught">All caught up &#10003;</span>';
+      }
+    }).catch(function(){});
+}
+
+setInterval(refreshTimestamps, 60000);
+setInterval(pollNotifications, 30000);
+
+// ── BELL TOGGLE ───────────────────────────────────────────────
+var notifOpen = false;
+function toggleNotif() {
+  notifOpen = !notifOpen;
+  document.getElementById('notifDropdown').classList.toggle('open', notifOpen);
+}
+document.addEventListener('click', function(e) {
+  var wrap = document.querySelector('.notif-wrap');
+  if (wrap && !wrap.contains(e.target)) {
+    notifOpen = false;
+    document.getElementById('notifDropdown').classList.remove('open');
+  }
+});
+
+// ── PROFILE PHOTO PREVIEW ─────────────────────────────────────
+var EYE_OPEN   = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
+var EYE_CLOSED = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>';
 function togglePw(inputId, iconId) {
-  const input = document.getElementById(inputId);
-  const icon  = document.getElementById(iconId);
+  var input = document.getElementById(inputId);
+  var icon  = document.getElementById(iconId);
   input.type = input.type === 'password' ? 'text' : 'password';
   icon.innerHTML = input.type === 'password' ? EYE_OPEN : EYE_CLOSED;
 }
-document.getElementById('photo_file').addEventListener('change', function () {
-  const file = this.files[0]; if (!file) return;
-  const sel = document.getElementById('photo-selected');
+document.getElementById('photo_file').addEventListener('change', function() {
+  var file = this.files[0]; if (!file) return;
+  var sel = document.getElementById('photo-selected');
   sel.textContent = file.name; sel.style.display = 'block';
-  const reader = new FileReader();
-  reader.onload = function (e) {
-    const img = document.getElementById('avatarImg');
-    const icon = document.getElementById('avatarIcon');
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    var img  = document.getElementById('avatarImg');
+    var icon = document.getElementById('avatarIcon');
     img.src = e.target.result; img.style.display = 'block';
     if (icon) icon.style.display = 'none';
   };
   reader.readAsDataURL(file);
 });
-const zone = document.getElementById('uploadZone');
-zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor='var(--blue)'; zone.style.background='var(--blue-lt)'; });
-zone.addEventListener('dragleave', () => { zone.style.borderColor=''; zone.style.background=''; });
-zone.addEventListener('drop', () => { zone.style.borderColor=''; zone.style.background=''; });
+var zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.borderColor='var(--blue)'; zone.style.background='var(--blue-lt)'; });
+zone.addEventListener('dragleave', function() { zone.style.borderColor=''; zone.style.background=''; });
+zone.addEventListener('drop', function() { zone.style.borderColor=''; zone.style.background=''; });
 </script>
 </body>
 </html>
