@@ -1,12 +1,13 @@
 <?php
-require_once 'config.php';
+session_start();
+require_once 'db.php';
 
 if (!isset($_SESSION['student_id']) || empty($_SESSION['student_id'])) {
     header("Location: login.php");
     exit();
 }
 
-$student_id = $_SESSION['student_id'];
+$student_id = (int)$_SESSION['student_id'];
 $firstname  = $_SESSION['firstname'];
 $lastname   = $_SESSION['lastname'];
 $course     = $_SESSION['course'];
@@ -17,11 +18,11 @@ $msg_type = '';
 
 // Handle sit-in log submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sitin'])) {
-    $lab  = mysqli_real_escape_string($conn, trim($_POST['lab_room']));
-    $purp = mysqli_real_escape_string($conn, trim($_POST['purpose']));
-    $sid  = mysqli_real_escape_string($conn, $student_id);
+    $lab  = trim($_POST['lab_room'] ?? '');
+    $purp = trim($_POST['purpose'] ?? '');
     if ($lab && $purp) {
-        mysqli_query($conn, "INSERT INTO sitin_logs (student_id, lab_room, purpose) VALUES ('$sid', '$lab', '$purp')");
+        $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date) VALUES (?, ?, ?, ?, ?, NOW(), CURDATE())")
+            ->execute([$student_id, $_SESSION['id_number'], $_SESSION['fullname'], $purp, $lab]);
         $msg      = "Sit-in logged successfully!";
         $msg_type = "success";
     } else {
@@ -30,9 +31,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['sitin'])) {
     }
 }
 
-// Fetch recent sit-in logs
-$sid_esc = mysqli_real_escape_string($conn, $student_id);
-$logs    = mysqli_query($conn, "SELECT * FROM sitin_logs WHERE student_id = '$sid_esc' ORDER BY time_in DESC LIMIT 10");
+// Fetch recent sit-in logs from the correct table
+$logs = $pdo->prepare("SELECT * FROM sit_in_history WHERE student_id = ? ORDER BY login_time DESC LIMIT 10");
+$logs->execute([$student_id]);
+$logs = $logs->fetchAll();
 
 // Suffix helper
 function ordSuffix($n) {
@@ -314,17 +316,17 @@ function ordSuffix($n) {
                 <tbody>
                     <?php
                     $count = 0;
-                    while ($log = mysqli_fetch_assoc($logs)):
+                    foreach ($logs as $log):
                         $count++;
                     ?>
                     <tr>
                         <td><?= $count ?></td>
-                        <td><?= htmlspecialchars($log['lab_room']) ?></td>
-                        <td><?= htmlspecialchars($log['purpose']) ?></td>
-                        <td><?= date('M d, Y — h:i A', strtotime($log['time_in'])) ?></td>
-                        <td><span class="badge <?= $log['status'] ?>"><?= ucfirst($log['status']) ?></span></td>
+                        <td><?= htmlspecialchars($log['laboratory'] ?? 'N/A') ?></td>
+                        <td><?= htmlspecialchars($log['sit_purpose'] ?? 'N/A') ?></td>
+                        <td><?= date('M d, Y — h:i A', strtotime($log['login_time'])) ?></td>
+                        <td><span class="badge<?= (!empty($log['logout_time'])) ? ' approved' : ' pending' ?>"><?= (!empty($log['logout_time'])) ? 'Logged Out' : 'Active' ?></span></td>
                     </tr>
-                    <?php endwhile; ?>
+                    <?php endforeach; ?>
                     <?php if ($count === 0): ?>
                     <tr>
                         <td colspan="5" class="no-records">No sit-in records yet. Log your first session above!</td>

@@ -100,16 +100,17 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
 
 /* ── NOTIFICATION ROWS — dot + title/desc + time ── */
-.notif-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;}
+.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;}
 .notif-item:last-child{border-bottom:none;}
 .notif-item:hover{background:var(--gray-50);}
-.notif-dot{width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:5px;}
-.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-200);}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-item.unread{background:rgba(27,88,134,0.08);}
+.notif-dot{display:none;width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:6px;}
+.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-300);}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .notif-title{font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.4;}
-.notif-msg{font-size:12px;color:var(--gray-400);line-height:1.4;word-break:break-word;font-weight:400;}
+.notif-msg{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
 .announcement-highlight{color:#000;font-weight:700;}
-.notif-time-right{font-size:12px;color:var(--gray-400);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
+.notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
 .notif-empty{padding:32px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
 /* ── DASHBOARD GRID ── */
@@ -159,7 +160,6 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 <nav>
   <div class="nav-brand">Dashboard</div>
   <div class="nav-links">
-
     <div class="notif-wrap">
       <button class="notif-btn" onclick="toggleNotif()" id="notifBtn">
         <span class="bell-wrap">
@@ -167,23 +167,21 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
-          <?php if ($unread_count > 0): ?>
-            <span class="red-dot" id="redDot"></span>
-          <?php endif; ?>
+          <?php if ($unread_count > 0): ?><span class="red-dot" id="redDot"></span><?php endif; ?>
         </span>
         Notifications
         <span class="notif-badge <?= $unread_count > 0 ? 'show' : '' ?>" id="notifBadge">
           <?= $unread_count > 0 ? ($unread_count > 99 ? '99+' : $unread_count) : '' ?>
         </span>
       </button>
-
       <div class="notif-dropdown" id="notifDropdown">
         <div class="notif-head">
           <span class="notif-head-title">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
             Notifications
-            <?php if ($unread_count > 0): ?>
-              <span class="notif-new-pill"><?= $unread_count ?> new</span>
-            <?php endif; ?>
           </span>
           <span id="notifHeadRight">
             <?php if ($unread_count > 0): ?>
@@ -192,35 +190,32 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
                 <button type="submit" class="notif-mark">Mark all read</button>
               </form>
             <?php else: ?>
-              <span class="notif-caught">All caught up ✓</span>
+              <span class="notif-caught">All caught up &#10003;</span>
             <?php endif; ?>
           </span>
         </div>
-
         <div class="notif-list" id="notifList">
           <?php if (empty($notifications)): ?>
             <div class="notif-empty">No notifications yet.</div>
           <?php else: ?>
             <?php foreach ($notifications as $n):
-              $ts  = (int)strtotime($n['created_at']);
               $msg = stripLeadingEmoji($n['message']);
             ?>
-              <div class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+              <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
                 <div class="notif-content">
                   <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
-                  <div class="notif-time" data-ts="<?= $ts ?>"></div>
+                  <div class="notif-time" data-ts="<?= (int)strtotime($n['created_at']) ?>"></div>
                 </div>
-              </div>
+              </a>
             <?php endforeach; ?>
           <?php endif; ?>
         </div>
       </div>
     </div>
-
     <a href="Homepage.php" class="active">Home</a>
     <a href="profile.php">Edit Profile</a>
     <a href="history.php">History</a>
-    <a href="reservation.php">Reservation</a>
+    <a href="feedback.php">Feedback</a>
     <a href="logout.php" class="btn-logout">Log out</a>
   </div>
 </nav>
@@ -394,14 +389,14 @@ function renderNotifItem(n) {
   var title = highlightAnnouncementTitle(escHtml(notif.title));
   var desc = escHtml(notif.desc);
   var cls = parseInt(n.is_read) === 0 ? 'notif-item unread' : 'notif-item read';
-  return '<div class="' + cls + '" data-id="' + n.id + '">'
+  return '<a href="notification_handler.php?id=' + n.id + '" class="' + cls + '" data-id="' + n.id + '" style="text-decoration:none;color:inherit;">' 
        + '<div class="notif-dot"></div>'
        + '<div class="notif-content">'
        + '<div class="notif-title">' + title + '</div>'
        + (desc ? '<div class="notif-msg">' + desc + '</div>' : '')
        + '</div>'
        + '<div class="notif-time-right">' + relTime + '</div>'
-       + '</div>';
+       + '</a>';
 }
 
 function pollNotifications() {
