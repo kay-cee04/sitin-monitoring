@@ -3,7 +3,7 @@ session_start();
 require_once 'db.php';
 $error = ''; $success = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $id_number=trim($_POST['id_number']??''); $id_number=trim($_POST['id_number']??'');
+    $id_number=trim($_POST['id_number']??'');
     $lastname=trim($_POST['lastname']??''); $firstname=trim($_POST['firstname']??'');
     $middlename=trim($_POST['middlename']??''); $email=trim($_POST['email']??'');
     $address=trim($_POST['address']??''); $course=trim($_POST['course']??'');

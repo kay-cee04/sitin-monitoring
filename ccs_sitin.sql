@@ -85,6 +85,20 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- ============================================================
+--  TABLE: feedback
+-- ============================================================
+CREATE TABLE IF NOT EXISTS feedback (
+    id              INT AUTO_INCREMENT PRIMARY KEY,
+    sitin_id        INT         NOT NULL,
+    student_id      INT         NOT NULL,
+    admin_feedback  TEXT        NOT NULL,
+    admin_name      VARCHAR(100)DEFAULT 'CCS Admin',
+    created_at      TIMESTAMP   DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (sitin_id) REFERENCES sit_in_history(id) ON DELETE CASCADE,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE
+);
+
+-- ============================================================
 --  SAMPLE DATA
 -- ============================================================
 

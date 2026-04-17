@@ -19,6 +19,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['course']     = $student['course']; $_SESSION['year_level'] = $student['year_level'];
             $_SESSION['email']      = $student['email']; $_SESSION['address']    = $student['address'];
             $_SESSION['session']    = $student['session'];
+
+            // ── Insert sit-in record on login (only if no active session today) ──
+            $active = $pdo->prepare("SELECT id FROM sit_in_history WHERE student_id = ? AND date = CURDATE() AND logout_time IS NULL LIMIT 1");
+            $active->execute([$student['id']]);
+            if (!$active->fetch()) {
+                $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date) VALUES (?, ?, ?, 'Self-Service Login', '—', NOW(), CURDATE())")
+                    ->execute([$student['id'], $student['id_number'], $_SESSION['fullname']]);
+            }
+
             header('Location: Homepage.php'); exit;
         } else { $error = 'Invalid ID number or password. Please try again.'; }
     }

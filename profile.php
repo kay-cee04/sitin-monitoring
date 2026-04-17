@@ -98,16 +98,17 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-list{max-height:380px;overflow-y:auto;background:var(--white);}
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
-.notif-item{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;}
+.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;}
 .notif-item:last-child{border-bottom:none;}
 .notif-item:hover{background:var(--gray-50);}
-.notif-dot{width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:5px;}
-.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-200);}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-item.unread{background:rgba(27,88,134,0.08);}
+.notif-dot{display:none;width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:6px;}
+.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-300);}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .notif-title{font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.4;}
-.notif-msg{font-size:12px;color:var(--gray-400);line-height:1.4;font-weight:400;}
+.notif-msg{font-size:12px;color:var(--gray-600);line-height:1.4;font-weight:400;}
 .announcement-highlight{color:#000;font-weight:700;}
-.notif-time-right{font-size:12px;color:var(--gray-400);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
+.notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
 .notif-empty{padding:28px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
 /* PAGE */
@@ -187,8 +188,6 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
 <nav>
   <div class="nav-brand">Dashboard</div>
   <div class="nav-links">
-
-    <!-- NOTIFICATION BELL -->
     <div class="notif-wrap">
       <button class="notif-btn" onclick="toggleNotif()" id="notifBtn">
         <span class="bell-wrap">
@@ -230,22 +229,21 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
             <?php foreach ($notifications as $n):
               $msg = stripLeadingEmoji($n['message']);
             ?>
-              <div class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+              <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
                 <div class="notif-content">
                   <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
                   <div class="notif-time" data-ts="<?= (int)strtotime($n['created_at']) ?>"></div>
                 </div>
-              </div>
+              </a>
             <?php endforeach; ?>
           <?php endif; ?>
         </div>
       </div>
     </div>
-
     <a href="Homepage.php">Home</a>
     <a href="profile.php" class="active">Edit Profile</a>
     <a href="history.php">History</a>
-    <a href="reservation.php">Reservation</a>
+    <a href="feedback.php">Feedback</a>
     <a href="logout.php" class="btn-logout">Log out</a>
   </div>
 </nav>
@@ -494,14 +492,14 @@ function renderNotifItem(n) {
   var title = highlightAnnouncementTitle(escHtml(notif.title));
   var desc = escHtml(notif.desc);
   var cls = parseInt(n.is_read) === 0 ? 'notif-item unread' : 'notif-item read';
-  return '<div class="' + cls + '" data-id="' + n.id + '">'
+  return '<a href="notification_handler.php?id=' + n.id + '" class="' + cls + '" data-id="' + n.id + '" style="text-decoration:none;color:inherit;">' 
        + '<div class="notif-dot"></div>'
        + '<div class="notif-content">'
        + '<div class="notif-title">' + title + '</div>'
        + (desc ? '<div class="notif-msg">' + desc + '</div>' : '')
        + '</div>'
        + '<div class="notif-time-right">' + relTime + '</div>'
-       + '</div>';
+       + '</a>';
 }
 
 function pollNotifications() {

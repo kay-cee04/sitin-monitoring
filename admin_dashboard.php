@@ -140,6 +140,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ->execute([(int)$_POST['sitin_id']]);
         header('Location: admin_dashboard.php?page=sitin&msg=logout'); exit;
     }
+
+    // Edit a sit-in history record
+    if (isset($_POST['edit_sitin_record'])) {
+        $sid      = (int)$_POST['sitin_record_id'];
+        $purpose  = trim($_POST['edit_sit_purpose'] ?? '');
+        $lab      = trim($_POST['edit_laboratory']  ?? '');
+        $login_t  = trim($_POST['edit_login_time']  ?? '');
+        $logout_t = trim($_POST['edit_logout_time'] ?? '');
+        $date     = trim($_POST['edit_date']         ?? '');
+        // Build logout_time value (null if empty)
+        $logout_val = $logout_t ? $date . ' ' . $logout_t : null;
+        $login_val  = $login_t  ? $date . ' ' . $login_t  : null;
+        $pdo->prepare("UPDATE sit_in_history SET sit_purpose=?, laboratory=?, login_time=?, logout_time=?, date=? WHERE id=?")
+            ->execute([$purpose, $lab, $login_val, $logout_val, $date, $sid]);
+        header('Location: admin_dashboard.php?page=sitin&msg=history_edited'); exit;
+    }
 }
 
 // ── Fetch data ───────────────────────────────────────────────
@@ -178,6 +194,7 @@ $flash_map = [
     'logout'     => '✅ Student logged out.',
     'sitin_err'  => '❌ Please fill in all required fields (ID, Name, Purpose, Lab).',
     'session_updated' => '✅ Session updated successfully.',
+    'history_edited'  => '✅ Sit-in record updated successfully.',
 ];
 $flash_msg = $flash_map[$_GET['msg'] ?? ''] ?? '';
 ?>
@@ -560,6 +577,10 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
                   Edit Session
                 </button>
               <?php endif; ?>
+              <button class="btn btn-sm" style="background:#7c3aed;color:#fff;"
+                onclick="openEditSitin(<?= $si['id'] ?>,'<?= addslashes($si['sit_purpose']) ?>','<?= addslashes($si['laboratory']) ?>','<?= $si['login_time'] ?>','<?= $si['logout_time'] ?>','<?= $si['date'] ?>')">
+                Edit Record
+              </button>
               <form method="POST" style="display:inline;">
                 <input type="hidden" name="sitin_id" value="<?= $si['id'] ?>"/>
                 <button type="submit" name="logout_sitin" class="btn btn-red btn-sm"
@@ -704,7 +725,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
   </div>
 </div>
 
-<!-- ════════════ RESERVATION ════════════ 
+<!-- ════════════ RESERVATION ════════════  -->
 <div id="page-reservation" class="page-section <?= $page==='reservation'?'active':'' ?>">
   <div class="page-title">Reservations</div>
   <div class="toolbar">
@@ -752,7 +773,7 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
   </div>
 </div>
 
-</div>-- end page-body -->
+</div><!-- end page-body -->
 
 <!-- ══════════════════════════════════════
      MODALS
@@ -994,8 +1015,71 @@ thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
   </div>
 </div>
 
+<!-- EDIT SIT-IN RECORD MODAL -->
+<div class="modal-overlay" id="editSitinModal">
+  <div class="modal" style="max-width:500px;">
+    <div class="modal-head">
+      <h3>Edit Sit-in Record</h3>
+      <button class="modal-close" onclick="closeModal('editSitinModal')">×</button>
+    </div>
+    <form method="POST">
+      <div class="modal-body">
+        <input type="hidden" name="sitin_record_id" id="esitin_id"/>
+        <div class="field-row">
+          <div class="field">
+            <label>Purpose *</label>
+            <input type="text" name="edit_sit_purpose" id="esitin_purpose" required/>
+          </div>
+          <div class="field">
+            <label>Laboratory *</label>
+            <input type="text" name="edit_laboratory" id="esitin_lab" required/>
+          </div>
+        </div>
+        <div class="field">
+          <label>Date *</label>
+          <input type="date" name="edit_date" id="esitin_date" required/>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Login Time</label>
+            <input type="time" name="edit_login_time" id="esitin_login"/>
+          </div>
+          <div class="field">
+            <label>Logout Time <small style="color:var(--gray-400);font-weight:400;">(leave blank = Ongoing)</small></label>
+            <input type="time" name="edit_logout_time" id="esitin_logout"/>
+          </div>
+        </div>
+        <p style="font-size:12px;color:var(--gray-400);margin-top:4px;">
+          💡 Leave <strong>Logout Time</strong> blank to keep status as <em>Ongoing</em>. Fill it in to mark as <em>Completed</em>.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn" style="background:var(--gray-200);color:var(--gray-800);" onclick="closeModal('editSitinModal')">Cancel</button>
+        <button type="submit" name="edit_sitin_record" class="btn btn-blue">Save Changes</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
-// ── Edit Session modal ──
+// ── Edit Sit-in Record modal ──
+function openEditSitin(id, purpose, lab, loginTime, logoutTime, date) {
+  document.getElementById('esitin_id').value = id;
+  document.getElementById('esitin_purpose').value = purpose;
+  document.getElementById('esitin_lab').value = lab;
+  document.getElementById('esitin_date').value = date ? date.substring(0, 10) : '';
+
+  // Extract time part from datetime string (format: "2026-04-11 08:00:00")
+  function extractTime(dt) {
+    if (!dt || dt === '0000-00-00 00:00:00') return '';
+    var parts = dt.split(' ');
+    return parts[1] ? parts[1].substring(0, 5) : '';
+  }
+  document.getElementById('esitin_login').value  = extractTime(loginTime);
+  document.getElementById('esitin_logout').value = extractTime(logoutTime);
+  openModal('editSitinModal');
+}
+
 function openEditSession(id, name, session){
   document.getElementById('esess_student_id').value = id;
   document.getElementById('esess_name').textContent  = name;
