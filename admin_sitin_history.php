@@ -113,6 +113,9 @@ $flash_map = [
     'deleted'        => '✅ Record deleted.',
 ];
 $flash_msg = $flash_map[$_GET['msg'] ?? ''] ?? '';
+
+// Fetch all students for the search functionality
+$students = $pdo->query("SELECT id, id_number, firstname, middlename, lastname, course, year_level, session FROM students ORDER BY firstname ASC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -135,12 +138,12 @@ body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:
 
 /* ── NAV ── */
 nav{background:var(--blue-dk);height:56px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
-.nav-brand{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;}
-.nav-links{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
-.nav-links a{font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;padding:5px 10px;border-radius:4px;white-space:nowrap;transition:all .15s;}
+.nav-brand{font-size:14px;font-weight:800;color:#fff;white-space:nowrap;letter-spacing:-0.01em;}
+.nav-links{display:flex;align-items:center;gap:1px;flex-wrap:wrap;}
+.nav-links a{font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;padding:6px 12px;border-radius:4px;white-space:nowrap;transition:all .15s;}
 .nav-links a:hover{color:#fff;background:rgba(255,255,255,0.12);}
 .nav-links a.active{color:#89CFF1;font-weight:600;}
-.btn-logout-nav{background:#e8b800;color:#1a1a00 !important;font-weight:700 !important;border-radius:4px;padding:5px 14px !important;margin-left:4px;}
+.btn-logout-nav{background:#e8b800;color:#1a1a00 !important;font-weight:700 !important;border-radius:4px;padding:6px 16px !important;margin-left:8px;}
 .btn-logout-nav:hover{background:#ffd000 !important;}
 
 /* ── FLASH ── */
@@ -234,15 +237,27 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
 
 <!-- ══════════════ NAV ══════════════ -->
 <nav>
-  <div class="nav-brand">CCS | Sit-in History</div>
+  <div class="nav-brand">College of Computer Studies Admin</div>
   <div class="nav-links">
-    <a href="admin_dashboard.php">Back to Dashboard</a>
+    <a href="admin_dashboard.php?page=home">Home</a>
+    <a href="admin_dashboard.php?page=home" onclick="openModal('searchModal');return false;">Search</a>
+    <a href="admin_dashboard.php?page=students">Students</a>
+    <a href="admin_dashboard.php?page=home" onclick="openBlankSitin(); return false;">Sit-in</a>
+    <a href="admin_sitin_history.php" class="active">View Sit-in History</a>
+    <a href="admin_dashboard.php?page=reports">Sit-in Reports</a>
+    <a href="admin_dashboard.php?page=feedback">Feedback Reports</a>
+    <a href="admin_dashboard.php?page=reservation">Reservation</a>
     <a href="admin_logout.php" class="btn-logout-nav">Log out</a>
   </div>
 </nav>
 
 <!-- ══════════════ BODY ══════════════ -->
 <div class="page-body">
+
+<div style="margin-bottom: 28px; border-bottom: 2px solid var(--gray-200); padding-bottom: 16px; text-align: center;">
+  <h1 style="font-size: 26px; font-weight: 800; color: var(--blue-dk); margin: 0;">View Sit-In History</h1>
+  <p style="font-size: 13px; color: var(--gray-600); margin-top: 4px;">Manage and review all student sit-in sessions</p>
+</div>
 
 <?php if ($flash_msg): ?>
   <div class="flash"><?= $flash_msg ?></div>
@@ -408,7 +423,125 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
   </div>
 </div>
 
+<!-- ════════════════════════════════════════
+     MODALS
+══════════════════════════════════════ -->
+
+<!-- SEARCH MODAL -->
+<div class="modal-overlay" id="searchModal">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <h3>Search Student</h3>
+      <button class="modal-close" onclick="closeModal('searchModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" class="search-input" id="globalSearch" placeholder="Search..." style="width:100%;font-size:14px;padding:9px 12px;"
+             oninput="globalSearchFn(this.value)"/>
+      <div id="searchResults" style="margin-top:14px;max-height:260px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-blue" onclick="runGlobalSearch()">Search</button>
+    </div>
+  </div>
+</div>
+
+<!-- SITIN SEARCH MODAL — search student then open sit-in form -->
+<div class="modal-overlay" id="sitinSearchModal">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <h3>Search Student</h3>
+      <button class="modal-close" onclick="closeModal('sitinSearchModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="text" id="sitinSearchInput" class="search-input"
+             placeholder="Search by ID or name..."
+             oninput="sitinSearchFn(this.value)"
+             style="width:100%;padding:9px 12px;font-size:14px;border:1.5px solid var(--gray-200);border-radius:var(--radius);outline:none;font-family:inherit;"
+             onfocus="this.style.borderColor='var(--blue)'" onblur="this.style.borderColor='var(--gray-200)'"/>
+      <div id="sitinSearchResults" style="margin-top:12px;max-height:280px;overflow-y:auto;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SIT-IN FORM MODAL — admin fills in manually, auto-fills if student is registered -->
+<div class="modal-overlay" id="sitinModal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head" style="border-bottom:1px solid #e8f0f7;">
+      <h3 style="font-size:16px;font-weight:700;color:#1a2e45;">Sit In Form</h3>
+      <button class="modal-close" onclick="closeModal('sitinModal')">×</button>
+    </div>
+    <form method="POST">
+      <div class="modal-body" style="padding:20px 24px;">
+        <input type="hidden" name="student_id" id="sitin_student_id" value="0"/>
+        <input type="hidden" name="current_page" id="sitin_current_page" value="history"/>
+
+        <table style="width:100%;border-collapse:separate;border-spacing:0 10px;">
+          <tr>
+            <td style="width:42%;font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;white-space:nowrap;">ID Number:</td>
+            <td>
+              <div style="display:flex;gap:6px;">
+                <input type="text" name="id_number" id="sitin_id_number"
+                       placeholder="Enter student ID"
+                       style="flex:1;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/>
+                <button type="button" onclick="lookupStudent()"
+                        style="padding:8px 12px;background:#1B5886;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;">
+                  Look up
+                </button>
+              </div>
+              <div id="sitin_lookup_msg" style="font-size:11.5px;margin-top:4px;display:none;"></div>
+            </td>
+          </tr>
+          <tr>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Student Name:</td>
+            <td><input type="text" name="student_name" id="sitin_name"
+                       placeholder="Enter full name"
+                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
+          </tr>
+          <tr>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Purpose:</td>
+            <td><input type="text" name="purpose" id="sitin_purpose"
+                       placeholder="e.g. C Programming" required
+                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
+          </tr>
+          <tr>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Lab:</td>
+            <td><input type="text" name="lab" id="sitin_lab"
+                       placeholder="e.g. 524" required
+                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
+          </tr>
+          <tr>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Remaining Session:</td>
+            <td><input type="text" id="sitin_session" readonly placeholder="Auto-filled for registered students"
+                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;background:#f9fafb;font-family:inherit;color:#1a2e45;"/></td>
+          </tr>
+        </table>
+      </div>
+      <div class="modal-footer" style="justify-content:flex-end;gap:8px;">
+        <button type="button"
+                style="padding:8px 20px;border-radius:6px;border:none;background:#6b7280;color:#fff;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;"
+                onclick="closeSitinModal()">Close</button>
+        <button type="submit" name="do_sitin"
+                style="padding:8px 20px;border-radius:6px;border:none;background:#1B5886;color:#fff;font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;">Sit In</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+// ── All students data for search ──
+const allStudents = <?php echo json_encode(array_map(fn($s)=>[
+  'id'       => $s['id'],
+  'id_number'=> $s['id_number'],
+  'name'     => $s['firstname'].' '.$s['middlename'].' '.$s['lastname'],
+  'course'   => $s['course'],
+  'year'     => $s['year_level'],
+  'session'  => $s['session'],
+], $students)); ?>;
+
 // ── Modal functions ──
 function openModal(id) {
   document.getElementById(id).classList.add('open');
@@ -454,6 +587,116 @@ function filterTable(query) {
     row.style.display = text.includes(q) ? '' : 'none';
   });
 }
+
+// ── Open Sit-in modal (from search results) ──
+function openSitinFor(id, idnum, name, session){
+  document.getElementById('sitin_student_id').value = id;
+  document.getElementById('sitin_id_number').value  = idnum;
+  document.getElementById('sitin_name').value        = name;
+  document.getElementById('sitin_session').value     = session;
+  document.getElementById('sitin_purpose').value     = '';
+  document.getElementById('sitin_lab').value         = '';
+  const msg = document.getElementById('sitin_lookup_msg');
+  msg.style.display = 'block';
+  msg.style.color   = '#16a34a';
+  msg.textContent   = '✅ Registered student found — session will be deducted on Sit In.';
+  closeModal('searchModal');
+  closeModal('sitinSearchModal');
+  openModal('sitinModal');
+}
+
+// ── Clear and open blank Sit In Form ──
+function openBlankSitin(){
+  document.getElementById('sitin_current_page').value = 'history';
+
+  document.getElementById('sitin_student_id').value = '0';
+  document.getElementById('sitin_id_number').value  = '';
+  document.getElementById('sitin_name').value        = '';
+  document.getElementById('sitin_session').value     = '';
+  document.getElementById('sitin_purpose').value     = '';
+  document.getElementById('sitin_lab').value         = '';
+  const msg = document.getElementById('sitin_lookup_msg');
+  msg.style.display = 'none';
+  msg.textContent   = '';
+  openModal('sitinModal');
+}
+
+// ── Close sit-in modal and clear fields ──
+function closeSitinModal(){
+  closeModal('sitinModal');
+  document.getElementById('sitin_student_id').value = '0';
+  document.getElementById('sitin_id_number').value  = '';
+  document.getElementById('sitin_name').value        = '';
+  document.getElementById('sitin_session').value     = '';
+  document.getElementById('sitin_purpose').value     = '';
+  document.getElementById('sitin_lab').value         = '';
+  document.getElementById('sitin_lookup_msg').style.display = 'none';
+}
+
+// ── Look up student by ID number typed in the form ──
+function lookupStudent(){
+  const idnum = document.getElementById('sitin_id_number').value.trim();
+  const msg   = document.getElementById('sitin_lookup_msg');
+  if (!idnum){ msg.style.display='block'; msg.style.color='#dc2626'; msg.textContent='Please enter an ID number first.'; return; }
+
+  const found = allStudents.find(s => s.id_number === idnum);
+  msg.style.display = 'block';
+
+  if (found) {
+    document.getElementById('sitin_student_id').value = found.id;
+    document.getElementById('sitin_name').value        = found.name;
+    document.getElementById('sitin_session').value     = found.session;
+    msg.style.color   = '#16a34a';
+    msg.textContent   = '✅ Registered student found — session will be deducted on Sit In.';
+  } else {
+    document.getElementById('sitin_student_id').value = '0';
+    document.getElementById('sitin_name').value        = '';
+    document.getElementById('sitin_session').value     = '';
+    msg.style.color   = '#ea580c';
+    msg.textContent   = '⚠️ No registered account found. Fill in name manually — walk-in will be recorded.';
+  }
+}
+
+// ── Sit-in page search ──
+function sitinSearchFn(q){
+  const box = document.getElementById('sitinSearchResults');
+  if (!q.trim()){ box.innerHTML=''; return; }
+  const res = allStudents.filter(s =>
+    s.id_number.toLowerCase().includes(q.toLowerCase()) ||
+    s.name.toLowerCase().includes(q.toLowerCase())
+  );
+  if (!res.length){ box.innerHTML='<p style="color:#aaa;font-size:13px;padding:8px 0;">No students found.</p>'; return; }
+  box.innerHTML = res.map(s=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef0f4;">
+      <div>
+        <div style="font-size:13.5px;font-weight:700;color:#1a2e45;">${s.name}</div>
+        <div style="font-size:12px;color:#8aaac8;margin-top:2px;">${s.id_number} &bull; ${s.course} &bull; Year ${s.year} &bull; <strong style="color:#1B5886;">${s.session} sessions</strong></div>
+      </div>
+      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name.replace(/'/g,"\\'")}',${s.session})">Sit In</button>
+    </div>
+  `).join('');
+}
+
+// ── Global search (searches student table in memory) ──
+function globalSearchFn(q){
+  const box = document.getElementById('searchResults');
+  if (!q.trim()){ box.innerHTML=''; return; }
+  const res = allStudents.filter(s =>
+    s.id_number.toLowerCase().includes(q.toLowerCase()) ||
+    s.name.toLowerCase().includes(q.toLowerCase())
+  );
+  if (!res.length){ box.innerHTML='<p style="color:#aaa;font-size:13px;">No results.</p>'; return; }
+  box.innerHTML = res.map(s=>`
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #eee;">
+      <div>
+        <div style="font-size:13px;font-weight:600;">${s.name}</div>
+        <div style="font-size:12px;color:#888;">${s.id_number} &bull; ${s.course} ${s.year}yr &bull; ${s.session} sessions</div>
+      </div>
+      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name}',${s.session})">Sit In</button>
+    </div>
+  `).join('');
+}
+function runGlobalSearch(){ globalSearchFn(document.getElementById('globalSearch').value); }
 </script>
 </body>
 </html>

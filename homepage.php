@@ -45,9 +45,41 @@ try {
 }
 $unread_count = count(array_filter($notifications, fn($n) => $n['is_read'] == 0));
 
-// Strip leading emoji/symbols from a string
-function stripLeadingEmoji(string $s): string {
-    return trim(preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $s));
+// Extract emoji and clean message
+function extractEmojiAndClean($text) {
+  if (preg_match('/^([\p{Emoji}]+)\s*(.*)/u', $text, $matches)) {
+    return ['emoji' => $matches[1], 'text' => trim($matches[2])];
+  }
+  return ['emoji' => '🔔', 'text' => $text];
+}
+
+// Get icon based on message content
+function getNotificationIcon($emoji) {
+  $iconMap = [
+    '📤' => '📤',
+    '💬' => '💬',
+    '📢' => '📢',
+    '✅' => '✅',
+    '⚠️' => '⚠️',
+    '📧' => '📧',
+    '📝' => '📝',
+    '🎉' => '🎉',
+  ];
+  return $iconMap[$emoji] ?? '🔔';
+}
+
+// Parse notification to extract title and description
+function parseNotification($text) {
+  $lines = explode("\n", trim($text));
+  $title = trim($lines[0]);
+  $description = isset($lines[1]) ? trim($lines[1]) : (count($lines) > 1 ? '' : '');
+  
+  if (empty($description) && strpos($title, ':') !== false) {
+    list($title, $description) = explode(':', $title, 2);
+    $description = trim($description);
+  }
+  
+  return ['title' => $title, 'description' => $description];
 }
 ?>
 <!DOCTYPE html>
@@ -99,17 +131,20 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
 
-/* ── NOTIFICATION ROWS — dot + title/desc + time ── */
-.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;}
-.notif-item:last-child{border-bottom:none;}
+/* ── NOTIFICATION ROWS — simple clean style ── */
+.notif-item{display:flex;gap:12px;padding:12px 8px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;border-radius:0;margin:0;}
+.notif-item:first-child{padding-top:8px;}
+.notif-item:last-child{border-bottom:none;padding-bottom:8px;}
 .notif-item:hover{background:var(--gray-50);}
-.notif-item.unread{background:rgba(27,88,134,0.08);}
-.notif-dot{display:none;width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:6px;}
-.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-300);}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
-.notif-title{font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.4;}
-.notif-msg{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
-.announcement-highlight{color:#000;font-weight:700;}
+.notif-item.unread{background:transparent;}
+.notif-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;flex-shrink:0;margin-top:2px;}
+.notif-icon.type-logout{background:#fff3e0;color:#e65100;}
+.notif-icon.type-feedback{background:#e3f2fd;color:#1565c0;}
+.notif-icon.type-announce{background:#e8f5e9;color:#2e7d32;}
+.notif-icon.type-default{background:#f3e5f5;color:#6a1b9a;}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-title{font-size:13px;color:var(--gray-800);font-weight:700;line-height:1.4;word-break:break-word;}
+.notif-desc{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
 .notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
 .notif-empty{padding:32px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
@@ -199,13 +234,22 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
             <div class="notif-empty">No notifications yet.</div>
           <?php else: ?>
             <?php foreach ($notifications as $n):
-              $msg = stripLeadingEmoji($n['message']);
+              // Extract emoji and message
+              $emojiData = extractEmojiAndClean($n['message']);
+              
+              // Parse notification into title and description
+              $parsed = parseNotification($emojiData['text']);
+              $ts = (int)strtotime($n['created_at']);
             ?>
               <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+                <div class="notif-icon"></div>
                 <div class="notif-content">
-                  <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
-                  <div class="notif-time" data-ts="<?= (int)strtotime($n['created_at']) ?>"></div>
+                  <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
+                  <?php if (!empty($parsed['description'])): ?>
+                    <div class="notif-desc"><?= htmlspecialchars($parsed['description']) ?></div>
+                  <?php endif; ?>
                 </div>
+                <div class="notif-time-right" data-ts="<?= $ts ?>"></div>
               </a>
             <?php endforeach; ?>
           <?php endif; ?>
@@ -331,7 +375,7 @@ function relTime(ts) {
 }
 
 function refreshTimestamps() {
-  document.querySelectorAll('.notif-time[data-ts]').forEach(function(el) {
+  document.querySelectorAll('.notif-time[data-ts], .notif-time-right[data-ts]').forEach(function(el) {
     var ts = parseInt(el.getAttribute('data-ts'), 10);
     el.textContent = relTime(ts);
   });
@@ -383,17 +427,29 @@ function formatRelTime(created_at) {
   if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
   return 'Long ago';
 }
+function getNotifIconHtml(msg) {
+  var m = msg.toLowerCase();
+  if (m.indexOf('logged out') !== -1 || m.indexOf('log out') !== -1 || m.indexOf('logout') !== -1) {
+    return '<div class="notif-icon type-logout"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></div>';
+  } else if (m.indexOf('feedback') !== -1) {
+    return '<div class="notif-icon type-feedback"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>';
+  } else if (m.indexOf('announcement') !== -1) {
+    return '<div class="notif-icon type-announce"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg></div>';
+  }
+  return '<div class="notif-icon type-default"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>';
+}
+
 function renderNotifItem(n) {
   var notif = parseNotification(n.message);
   var relTime = formatRelTime(n.created_at);
-  var title = highlightAnnouncementTitle(escHtml(notif.title));
+  var title = escHtml(notif.title);
   var desc = escHtml(notif.desc);
   var cls = parseInt(n.is_read) === 0 ? 'notif-item unread' : 'notif-item read';
-  return '<a href="notification_handler.php?id=' + n.id + '" class="' + cls + '" data-id="' + n.id + '" style="text-decoration:none;color:inherit;">' 
-       + '<div class="notif-dot"></div>'
+  return '<a href="notification_handler.php?id=' + n.id + '" class="' + cls + '" data-id="' + n.id + '" style="text-decoration:none;color:inherit;">'
+       + getNotifIconHtml(n.message)
        + '<div class="notif-content">'
        + '<div class="notif-title">' + title + '</div>'
-       + (desc ? '<div class="notif-msg">' + desc + '</div>' : '')
+       + (desc ? '<div class="notif-desc">' + desc + '</div>' : '')
        + '</div>'
        + '<div class="notif-time-right">' + relTime + '</div>'
        + '</a>';

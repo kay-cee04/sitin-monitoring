@@ -33,6 +33,43 @@ $unread_count = count(array_filter($notifications, fn($n) => $n['is_read'] == 0)
 function stripLeadingEmoji(string $s): string {
     return trim(preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $s));
 }
+
+// Extract emoji and clean message
+function extractEmojiAndClean($text) {
+  if (preg_match('/^([\p{Emoji}]+)\s*(.*)/u', $text, $matches)) {
+    return ['emoji' => $matches[1], 'text' => trim($matches[2])];
+  }
+  return ['emoji' => '🔔', 'text' => $text];
+}
+
+// Get icon based on message content
+function getNotificationIcon($emoji) {
+  $iconMap = [
+    '📤' => '▲',  // Logout/Sent - Up triangle
+    '💬' => '◆',  // Feedback/Message - Diamond
+    '📢' => '★',  // Announcement - Star
+    '✅' => '✓',  // Completed/Success - Check
+    '⚠️' => '!',  // Warning - Exclamation
+    '📧' => '◉',  // Email - Circle
+    '📝' => '■',  // Note - Square
+    '🎉' => '◊',  // Celebration - Rhombus
+  ];
+  return $iconMap[$emoji] ?? '●';  // Default circle
+}
+
+// Parse notification to extract title and description
+function parseNotification($text) {
+  $lines = explode("\n", trim($text));
+  $title = trim($lines[0]);
+  $description = isset($lines[1]) ? trim($lines[1]) : (count($lines) > 1 ? '' : '');
+  
+  if (empty($description) && strpos($title, ':') !== false) {
+    list($title, $description) = explode(':', $title, 2);
+    $description = trim($description);
+  }
+  
+  return ['title' => $title, 'description' => $description];
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -81,23 +118,26 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-list{max-height:400px;overflow-y:auto;background:var(--white);}
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
-.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;}
-.notif-item:last-child{border-bottom:none;}
+.notif-item{display:flex;gap:12px;padding:12px 8px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;border-radius:0;margin:0;}
+.notif-item:first-child{padding-top:8px;}
+.notif-item:last-child{border-bottom:none;padding-bottom:8px;}
 .notif-item:hover{background:var(--gray-50);}
-.notif-item.unread{background:rgba(27,88,134,0.08);}
-.notif-dot{display:none;width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:6px;}
-.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-300);}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
-.notif-title{font-size:13px;color:var(--gray-800);font-weight:600;line-height:1.4;margin-bottom:0;}
-.notif-msg{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;}
-.announcement-highlight{color:#000;font-weight:700;}
+.notif-item.unread{background:transparent;}
+.notif-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;flex-shrink:0;margin-top:2px;}
+.notif-icon.type-logout{background:#fff3e0;color:#e65100;}
+.notif-icon.type-feedback{background:#e3f2fd;color:#1565c0;}
+.notif-icon.type-announce{background:#e8f5e9;color:#2e7d32;}
+.notif-icon.type-default{background:#f3e5f5;color:#6a1b9a;}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-title{font-size:13px;color:var(--gray-800);font-weight:700;line-height:1.4;word-break:break-word;}
+.notif-desc{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
 .notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
 .notif-empty{padding:32px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
 /* ── PAGE ── */
 .page-body{max-width:1100px;margin:0 auto;padding:32px 20px 60px;}
 .page-header{margin-bottom:20px;}
-.page-title{font-size:22px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;}
+.page-title{font-size:22px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;text-align:center;}
 .page-sub{font-size:13px;color:var(--gray-400);margin-top:4px;}
 .toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:10px;}
 .entries-wrap{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--gray-600);}
@@ -176,14 +216,39 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
             <div class="notif-empty">No notifications yet.</div>
           <?php else: ?>
             <?php foreach ($notifications as $n):
-              $ts  = (int)strtotime($n['created_at']);
-              $msg = stripLeadingEmoji($n['message']);
+              $ts = (int)strtotime($n['created_at']);
+              
+              // Extract emoji and message
+              $emojiData = extractEmojiAndClean($n['message']);
+              
+              // Parse notification into title and description
+              $parsed = parseNotification($emojiData['text']);
+              
+              // Determine icon type and SVG
+              $msgLower = strtolower($n['message']);
+              if (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
+                $iconClass = 'type-logout';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+              } elseif (strpos($msgLower, 'feedback') !== false) {
+                $iconClass = 'type-feedback';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+              } elseif (strpos($msgLower, 'announcement') !== false) {
+                $iconClass = 'type-announce';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>';
+              } else {
+                $iconClass = 'type-default';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+              }
             ?>
               <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+                <div class="notif-icon <?= $iconClass ?>"><?= $iconSvg ?></div>
                 <div class="notif-content">
-                  <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
-                  <div class="notif-time" data-ts="<?= $ts ?>"></div>
+                  <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
+                  <?php if (!empty($parsed['description'])): ?>
+                    <div class="notif-desc"><?= htmlspecialchars($parsed['description']) ?></div>
+                  <?php endif; ?>
                 </div>
+                <div class="notif-time-right" data-ts="<?= $ts ?>"></div>
               </a>
             <?php endforeach; ?>
           <?php endif; ?>
@@ -200,7 +265,7 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
 
 <div class="page-body">
   <div class="page-header">
-    <div class="page-title">&#128203; Sit-in History</div>
+    <div class="page-title">Sit-in History</div>
     <div class="page-sub">Showing all <?= $total ?> sit-in record<?= $total !== 1 ? 's' : '' ?> for your account</div>
   </div>
 

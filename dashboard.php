@@ -301,7 +301,7 @@ function ordSuffix($n) {
 
     <!-- Sit-In History -->
     <div class="card">
-        <h3>📅 Sit-In History</h3>
+        <h3>▭ Sit-In History</h3>
         <div class="table-wrap">
             <table>
                 <thead>
