@@ -42,6 +42,28 @@ function stripLeadingEmoji(string $s): string {
     return trim(preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $s));
 }
 
+// Extract emoji and clean message
+function extractEmojiAndClean($text) {
+  if (preg_match('/^([\p{Emoji}]+)\s*(.*)/u', $text, $matches)) {
+    return ['emoji' => $matches[1], 'text' => trim($matches[2])];
+  }
+  return ['emoji' => '', 'text' => $text];
+}
+
+// Parse notification to extract title and description
+function parseNotification($text) {
+  $lines = explode("\n", trim($text));
+  $title = trim($lines[0]);
+  $description = isset($lines[1]) ? trim($lines[1]) : (count($lines) > 1 ? '' : '');
+  
+  if (empty($description) && strpos($title, ':') !== false) {
+    list($title, $description) = explode(':', $title, 2);
+    $description = trim($description);
+  }
+  
+  return ['title' => $title, 'description' => $description];
+}
+
 // Fetch feedback for this student
 $feedback = $pdo->prepare("
     SELECT f.*, s.sit_purpose, s.laboratory, s.login_time, s.logout_time, s.date
@@ -95,7 +117,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .btn-logout:hover{background:#c53030 !important;}
 
 .page-body{max-width:1200px;margin:0 auto;padding:30px 20px 50px;}
-.page-title{font-size:24px;font-weight:800;color:var(--blue-dk);margin-bottom:24px;}
+.page-title{font-size:24px;font-weight:800;color:var(--blue-dk);margin-bottom:24px;text-align:center;}
 
 .content-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
 .card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);box-shadow:var(--shadow);overflow:hidden;}
@@ -106,7 +128,8 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .feedback-item{padding:14px;border-bottom:1px solid var(--gray-100);}
 .feedback-item:last-child{border-bottom:none;}
 .feedback-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.feedback-admin{font-size:13px;font-weight:700;color:var(--blue);}
+.feedback-admin{font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:6px;}
+.feedback-admin svg{flex-shrink:0;}
 .feedback-date{font-size:11px;color:var(--gray-400);}
 .feedback-sitin-ref{font-size:11px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:4px;padding:6px 8px;margin-bottom:8px;display:inline-block;}
 .feedback-sitin-ref strong{color:var(--blue-dk);}
@@ -122,17 +145,15 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .sitin-info{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
 .sitin-left{flex:1;}
 .sitin-purpose{font-size:13px;font-weight:700;color:var(--blue-dk);}
-.sitin-detail{font-size:12px;color:var(--gray-600);margin-top:3px;}
-.sitin-status{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;}
+.sitin-detail{font-size:12px;color:var(--gray-600);margin-top:3px;display:flex;align-items:center;gap:4px;}
+.sitin-detail svg{flex-shrink:0;}
+.sitin-status{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;}
 .sitin-status.completed{background:#fef3c7;color:#b45309;}
 
 .empty-state{text-align:center;padding:30px 20px;color:var(--gray-400);}
-.empty-icon{font-size:48px;margin-bottom:12px;}
+.empty-icon{margin-bottom:12px;display:flex;justify-content:center;}
 .empty-text{font-size:14px;font-weight:500;}
 
-@media(max-width:900px){
-  .content-grid{grid-template-columns:1fr;}
-}
 .notif-wrap{position:relative;}
 .notif-btn{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:rgba(255,255,255,0.75);background:none;border:none;cursor:pointer;padding:6px 11px;border-radius:6px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;}
 .notif-btn:hover{color:#fff;background:rgba(255,255,255,0.1);}
@@ -148,21 +169,32 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-new-pill{background:rgba(255,255,255,0.2);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;}
 .notif-mark{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;padding:4px 10px;border-radius:5px;cursor:pointer;transition:background .15s;}
 .notif-mark:hover{background:rgba(255,255,255,0.3);}
-.notif-caught{font-size:11px;color:rgba(255,255,255,0.55);}
+.notif-caught{font-size:11px;color:rgba(255,255,255,0.55);display:flex;align-items:center;gap:5px;}
 .notif-list{max-height:400px;overflow-y:auto;background:var(--white);}
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
-.notif-item{display:flex;gap:12px;padding:14px 16px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;}
-.notif-item:last-child{border-bottom:none;}
+.notif-item{display:flex;gap:12px;padding:12px 8px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;border-radius:0;margin:0;}
+.notif-item:first-child{padding-top:8px;}
+.notif-item:last-child{border-bottom:none;padding-bottom:8px;}
 .notif-item:hover{background:var(--gray-50);}
-.notif-item.unread{background:rgba(27,88,134,0.08);}
-.notif-dot{display:none;width:8px;height:8px;background:var(--blue);border-radius:50%;flex-shrink:0;margin-top:6px;}
-.notif-item.read .notif-dot{background:transparent;border:2px solid var(--gray-300);}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
-.notif-msg{font-size:13px;color:var(--gray-800);line-height:1.4;margin-bottom:0;font-weight:600;}
-.notif-time{font-size:12px;color:var(--gray-500);}
+.notif-item.unread{background:transparent;}
+.notif-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;flex-shrink:0;margin-top:2px;}
+.notif-icon.type-logout{background:#fff3e0;color:#e65100;}
+.notif-icon.type-feedback{background:#e3f2fd;color:#1565c0;}
+.notif-icon.type-announce{background:#e8f5e9;color:#2e7d32;}
+.notif-icon.type-default{background:#f3e5f5;color:#6a1b9a;}
+.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.notif-title{font-size:13px;color:var(--gray-800);font-weight:700;line-height:1.4;word-break:break-word;}
+.notif-desc{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
+.notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
 .notif-empty{padding:32px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
 
+.icon{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.feedback-ok{font-size:11px;color:#16a34a;margin-top:8px;font-weight:600;display:flex;align-items:center;gap:4px;}
+
+@media(max-width:900px){
+  .content-grid{grid-template-columns:1fr;}
+}
 </style>
 </head>
 <body>
@@ -199,7 +231,10 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
                 <button type="submit" class="notif-mark">Mark all read</button>
               </form>
             <?php else: ?>
-              <span class="notif-caught">All caught up ✓</span>
+              <span class="notif-caught">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                All caught up
+              </span>
             <?php endif; ?>
           </span>
         </div>
@@ -208,14 +243,35 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
             <div class="notif-empty">No notifications yet.</div>
           <?php else: ?>
             <?php foreach ($notifications as $n):
-              $ts  = (int)strtotime($n['created_at']);
-              $msg = stripLeadingEmoji($n['message']);
+              $ts = (int)strtotime($n['created_at']);
+              $emojiData = extractEmojiAndClean($n['message']);
+              $parsed = parseNotification($emojiData['text']);
+              
+              // Determine icon type and SVG
+              $msgLower = strtolower($n['message']);
+              if (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
+                $iconClass = 'type-logout';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+              } elseif (strpos($msgLower, 'feedback') !== false) {
+                $iconClass = 'type-feedback';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+              } elseif (strpos($msgLower, 'announcement') !== false) {
+                $iconClass = 'type-announce';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>';
+              } else {
+                $iconClass = 'type-default';
+                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+              }
             ?>
               <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
+                <div class="notif-icon <?= $iconClass ?>"><?= $iconSvg ?></div>
                 <div class="notif-content">
-                  <div class="notif-msg"><?= htmlspecialchars($msg) ?></div>
-                  <div class="notif-time" data-ts="<?= $ts ?>"></div>
+                  <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
+                  <?php if (!empty($parsed['description'])): ?>
+                    <div class="notif-desc"><?= htmlspecialchars($parsed['description']) ?></div>
+                  <?php endif; ?>
                 </div>
+                <div class="notif-time-right" data-ts="<?= $ts ?>"></div>
               </a>
             <?php endforeach; ?>
           <?php endif; ?>
@@ -231,7 +287,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 </nav>
 
 <div class="page-body">
-  <div class="page-title">📋 My Feedback</div>
+  <div class="page-title">My Feedback</div>
 
   <div class="content-grid">
     
@@ -239,14 +295,19 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
     <div>
       <div class="card">
         <div class="card-head">
-          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <!-- Chat bubble icon -->
+          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <h2>Feedback from Admin (<?= $total_feedback ?>)</h2>
         </div>
         <div class="card-body">
           <?php if ($feedback_records): foreach ($feedback_records as $fb): ?>
           <div class="feedback-item">
             <div class="feedback-header">
-              <span class="feedback-admin">💬 <?= htmlspecialchars($fb['admin_name']) ?></span>
+              <span class="feedback-admin">
+                <!-- Person/admin icon -->
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                <?= htmlspecialchars($fb['admin_name']) ?>
+              </span>
               <span class="feedback-date"><?= date('M d, Y h:i A', strtotime($fb['created_at'])) ?></span>
             </div>
             <div class="feedback-sitin-ref">
@@ -258,7 +319,10 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
           </div>
           <?php endforeach; else: ?>
           <div class="empty-state">
-            <div class="empty-icon">💌</div>
+            <div class="empty-icon">
+              <!-- Pen/write icon -->
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--gray-400)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
             <div class="empty-text">No feedback yet</div>
             <p style="font-size:12px;margin-top:6px;color:var(--gray-400);">Admin feedback will appear here when they review your sit-in records.</p>
           </div>
@@ -271,6 +335,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
     <div>
       <div class="card">
         <div class="card-head">
+          <!-- Document icon -->
           <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <h2>Sit-in Summary</h2>
         </div>
@@ -295,15 +360,37 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
             <div class="sitin-info">
               <div class="sitin-left">
                 <div class="sitin-purpose"><?= htmlspecialchars($sit['sit_purpose']) ?></div>
-                <div class="sitin-detail">🏫 Lab <?= htmlspecialchars($sit['laboratory']) ?></div>
-                <div class="sitin-detail">📅 <?= date('M d, Y', strtotime($sit['date'])) ?></div>
+                <div class="sitin-detail">
+                  <!-- Building/lab icon -->
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+                  Lab <?= htmlspecialchars($sit['laboratory']) ?>
+                </div>
+                <div class="sitin-detail">
+                  <!-- Calendar icon -->
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                  <?= date('M d, Y', strtotime($sit['date'])) ?>
+                </div>
               </div>
-              <span class="sitin-status <?= !empty($sit['logout_time']) ? 'completed' : '' ?>">
-                <?= !empty($sit['logout_time']) ? '✓ Logged Out' : '● Active' ?>
+              <?php if (!empty($sit['logout_time'])): ?>
+              <span class="sitin-status completed">
+                <!-- Check icon -->
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                Logged Out
               </span>
+              <?php else: ?>
+              <span class="sitin-status">
+                <!-- Radio/active dot -->
+                <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
+                Active
+              </span>
+              <?php endif; ?>
             </div>
             <?php if ($has_feedback): ?>
-            <div style="font-size:11px;color:#16a34a;margin-top:8px;font-weight:600;">✓ Feedback available</div>
+            <div class="feedback-ok">
+              <!-- Check circle icon -->
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Feedback available
+            </div>
             <?php endif; ?>
           </div>
           <?php endforeach; else: ?>
