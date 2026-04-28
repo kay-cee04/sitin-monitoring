@@ -25,7 +25,7 @@ try {
 // ── Handle POST actions ──────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
-    // Logout a sit-in record
+    // Logout a sit-in record with session deduction
     if (isset($_POST['logout_sitin'])) {
         $sitin_id = (int)$_POST['sitin_id'];
         $logout_time = $_POST['logout_time'] ?? null;
@@ -41,7 +41,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE sit_in_history SET logout_time = ? WHERE id = ?")
                     ->execute([$logout_datetime, $sitin_id]);
                 
-                // Send notification to student
+                // ── DEDUCT SESSION IF STUDENT IS REGISTERED ──
+                if ($record['student_id'] && $record['student_id'] > 0) {
+                    // Check current session count
+                    $checkSession = $pdo->prepare("SELECT session FROM students WHERE id = ? LIMIT 1");
+                    $checkSession->execute([$record['student_id']]);
+                    $currentSession = $checkSession->fetchColumn();
+                    
+                    if ($currentSession !== false && $currentSession > 0) {
+                        // Deduct 1 session
+                        $newSession = $currentSession - 1;
+                        $updateSession = $pdo->prepare("UPDATE students SET session = ? WHERE id = ?");
+                        $updateSession->execute([$newSession, $record['student_id']]);
+                        
+                        // Send notification to student about session deduction
+                        $notif = '📤 Your sit-in session has been logged out by admin. Remaining sessions: ' . $newSession;
+                        $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
+                            ->execute([$record['student_id'], $notif]);
+                    } else {
+                        // Send notification that no sessions left
+                        $notif = '⚠️ You have no remaining sessions left. Please contact the admin.';
+                        $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
+                            ->execute([$record['student_id'], $notif]);
+                    }
+                }
+                
+                // Also send logout notification
                 $notif = '📤 Your sit-in session has been logged out by admin at ' . $logout_time;
                 $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
                     ->execute([$record['student_id'] ?? 0, $notif]);
@@ -108,7 +133,7 @@ $active_sitin = (int)$pdo->query("SELECT COUNT(*) FROM sit_in_history WHERE logo
 $completed_sitin = (int)$pdo->query("SELECT COUNT(*) FROM sit_in_history WHERE logout_time IS NOT NULL")->fetchColumn();
 
 $flash_map = [
-    'logout'         => '✅ Student logged out successfully.',
+    'logout'         => '✅ Student logged out successfully. Session deducted by 1.',
     'feedback_added' => '✅ Feedback sent to student.',
     'deleted'        => '✅ Record deleted.',
 ];
@@ -315,6 +340,7 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           <th>Lab</th>
           <th>Login Time</th>
           <th>Logout Time</th>
+          <th>Remaining Sessions</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -322,7 +348,8 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
       <tbody>
         <?php if ($all_sitin): foreach ($all_sitin as $sit): 
           $is_active = empty($sit['logout_time']);
-          $full_name = $sit['firstname'] . ' ' . $sit['middlename'] . ' ' . $sit['lastname'];
+          $full_name = trim($sit['firstname'] . ' ' . $sit['middlename'] . ' ' . $sit['lastname']);
+          $full_name = $full_name ?: ($sit['fullname'] ?? 'Walk-in Student');
         ?>
         <tr>
           <td><strong><?= htmlspecialchars($sit['id_number']) ?></strong></td>
@@ -331,6 +358,24 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           <td><?= htmlspecialchars($sit['laboratory']) ?></td>
           <td><?= $sit['login_time'] ? date('M d, Y h:i A', strtotime($sit['login_time'])) : '—' ?></td>
           <td><?= $sit['logout_time'] ? date('M d, Y h:i A', strtotime($sit['logout_time'])) : '—' ?></td>
+          <td>
+            <?php 
+            // Get current remaining sessions for this student
+            if ($sit['student_id'] && $sit['student_id'] > 0) {
+                $sessStmt = $pdo->prepare("SELECT session FROM students WHERE id = ? LIMIT 1");
+                $sessStmt->execute([$sit['student_id']]);
+                $remaining = $sessStmt->fetchColumn();
+                if ($remaining !== false) {
+                    $sessColor = $remaining <= 5 ? '#dc2626' : ($remaining <= 10 ? '#ea580c' : '#16a34a');
+                    echo '<span style="font-weight:700;color:'.$sessColor.';">'.$remaining.'</span><span style="font-size:11px;color:var(--gray-400);"> / 30</span>';
+                } else {
+                    echo '<span style="color:var(--gray-400);">—</span>';
+                }
+            } else {
+                echo '<span style="color:var(--gray-400);">Walk-in</span>';
+            }
+            ?>
+          </td>
           <td>
             <?php if ($is_active): ?>
               <span class="badge badge-active">Active</span>
@@ -350,7 +395,7 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           </td>
         </tr>
         <?php endforeach; else: ?>
-        <tr><td colspan="8" class="no-data">No sit-in records found.</td></tr>
+        <tr><td colspan="9" class="no-data">No sit-in records found.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -378,7 +423,7 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           <input type="time" name="logout_time" id="logout_time" required/>
         </div>
         <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">
-          The logout time will be recorded with today's date.
+          The logout time will be recorded with today's date. Student's remaining sessions will be deducted by 1.
         </p>
       </div>
       <div class="modal-footer">
@@ -423,10 +468,6 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
   </div>
 </div>
 
-<!-- ════════════════════════════════════════
-     MODALS
-══════════════════════════════════════ -->
-
 <!-- SEARCH MODAL -->
 <div class="modal-overlay" id="searchModal">
   <div class="modal" style="max-width:400px;">
@@ -445,7 +486,7 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
   </div>
 </div>
 
-<!-- SITIN SEARCH MODAL — search student then open sit-in form -->
+<!-- SITIN SEARCH MODAL -->
 <div class="modal-overlay" id="sitinSearchModal">
   <div class="modal" style="max-width:420px;">
     <div class="modal-head">
@@ -463,14 +504,14 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
   </div>
 </div>
 
-<!-- SIT-IN FORM MODAL — admin fills in manually, auto-fills if student is registered -->
+<!-- SIT-IN FORM MODAL -->
 <div class="modal-overlay" id="sitinModal">
   <div class="modal" style="max-width:480px;">
     <div class="modal-head" style="border-bottom:1px solid #e8f0f7;">
       <h3 style="font-size:16px;font-weight:700;color:#1a2e45;">Sit In Form</h3>
       <button class="modal-close" onclick="closeModal('sitinModal')">×</button>
     </div>
-    <form method="POST">
+    <form method="POST" action="admin_dashboard.php">
       <div class="modal-body" style="padding:20px 24px;">
         <input type="hidden" name="student_id" id="sitin_student_id" value="0"/>
         <input type="hidden" name="current_page" id="sitin_current_page" value="history"/>
@@ -560,7 +601,6 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 // ── Logout modal ──
 function openLogoutModal(sitinId) {
   document.getElementById('logout_sitin_id').value = sitinId;
-  // Set default time to current time
   const now = new Date();
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -588,7 +628,7 @@ function filterTable(query) {
   });
 }
 
-// ── Open Sit-in modal (from search results) ──
+// ── Open Sit-in modal ──
 function openSitinFor(id, idnum, name, session){
   document.getElementById('sitin_student_id').value = id;
   document.getElementById('sitin_id_number').value  = idnum;
@@ -608,7 +648,6 @@ function openSitinFor(id, idnum, name, session){
 // ── Clear and open blank Sit In Form ──
 function openBlankSitin(){
   document.getElementById('sitin_current_page').value = 'history';
-
   document.getElementById('sitin_student_id').value = '0';
   document.getElementById('sitin_id_number').value  = '';
   document.getElementById('sitin_name').value        = '';
@@ -621,7 +660,7 @@ function openBlankSitin(){
   openModal('sitinModal');
 }
 
-// ── Close sit-in modal and clear fields ──
+// ── Close sit-in modal ──
 function closeSitinModal(){
   closeModal('sitinModal');
   document.getElementById('sitin_student_id').value = '0';
@@ -633,7 +672,7 @@ function closeSitinModal(){
   document.getElementById('sitin_lookup_msg').style.display = 'none';
 }
 
-// ── Look up student by ID number typed in the form ──
+// ── Look up student ──
 function lookupStudent(){
   const idnum = document.getElementById('sitin_id_number').value.trim();
   const msg   = document.getElementById('sitin_lookup_msg');
@@ -677,7 +716,7 @@ function sitinSearchFn(q){
   `).join('');
 }
 
-// ── Global search (searches student table in memory) ──
+// ── Global search ──
 function globalSearchFn(q){
   const box = document.getElementById('searchResults');
   if (!q.trim()){ box.innerHTML=''; return; }
