@@ -20,7 +20,7 @@ $history->execute([$student_id]);
 $rows  = $history->fetchAll();
 $total = count($rows);
 
-// Fetch notifications
+// Fetch initial notifications
 try {
     $notif_stmt = $pdo->prepare("SELECT id, message, is_read, created_at FROM notifications WHERE student_id = ? ORDER BY created_at DESC LIMIT 30");
     $notif_stmt->execute([$student_id]);
@@ -30,45 +30,53 @@ try {
 }
 $unread_count = count(array_filter($notifications, fn($n) => $n['is_read'] == 0));
 
-function stripLeadingEmoji(string $s): string {
-    return trim(preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $s));
-}
-
-// Extract emoji and clean message
-function extractEmojiAndClean($text) {
-  if (preg_match('/^([\p{Emoji}]+)\s*(.*)/u', $text, $matches)) {
-    return ['emoji' => $matches[1], 'text' => trim($matches[2])];
-  }
-  return ['emoji' => '🔔', 'text' => $text];
-}
-
-// Get icon based on message content
-function getNotificationIcon($emoji) {
-  $iconMap = [
-    '📤' => '▲',  // Logout/Sent - Up triangle
-    '💬' => '◆',  // Feedback/Message - Diamond
-    '📢' => '★',  // Announcement - Star
-    '✅' => '✓',  // Completed/Success - Check
-    '⚠️' => '!',  // Warning - Exclamation
-    '📧' => '◉',  // Email - Circle
-    '📝' => '■',  // Note - Square
-    '🎉' => '◊',  // Celebration - Rhombus
-  ];
-  return $iconMap[$emoji] ?? '●';  // Default circle
-}
-
 // Parse notification to extract title and description
 function parseNotification($text) {
-  $lines = explode("\n", trim($text));
-  $title = trim($lines[0]);
-  $description = isset($lines[1]) ? trim($lines[1]) : (count($lines) > 1 ? '' : '');
-  
-  if (empty($description) && strpos($title, ':') !== false) {
-    list($title, $description) = explode(':', $title, 2);
-    $description = trim($description);
-  }
-  
-  return ['title' => $title, 'description' => $description];
+    $text = trim($text);
+    $text = preg_replace('/^[\x{1F000}-\x{1FFFF}\x{2600}-\x{27FF}\x{FE00}-\x{FEFF}\x{1F300}-\x{1F9FF}\s]+/u', '', $text);
+    
+    if (strpos($text, 'New announcement from') === 0) {
+        $parts = explode(':', $text, 2);
+        return [
+            'title' => trim($parts[0]),
+            'description' => isset($parts[1]) ? trim($parts[1]) : ''
+        ];
+    }
+    
+    if (strpos($text, 'feedback') !== false) {
+        $cleanText = preg_replace('/^[💬]*\s*You received feedback from admin:\s*/i', '', $text);
+        return [
+            'title' => 'Feedback Received',
+            'description' => trim($cleanText)
+        ];
+    }
+    
+    if (strpos($text, 'logged out') !== false || strpos($text, 'Logged out') !== false) {
+        $cleanText = preg_replace('/^[📤]*\s*/', '', $text);
+        return [
+            'title' => 'Session Ended',
+            'description' => trim($cleanText)
+        ];
+    }
+    
+    $lines = explode("\n", $text, 2);
+    return [
+        'title' => trim($lines[0]),
+        'description' => isset($lines[1]) ? trim($lines[1]) : ''
+    ];
+}
+
+function getNotificationIcon($message) {
+    $msgLower = strtolower($message);
+    if (strpos($msgLower, 'announcement') !== false) {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    } elseif (strpos($msgLower, 'feedback') !== false) {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    } elseif (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+    } else {
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -81,14 +89,16 @@ function parseNotification($text) {
 <style>
 :root{
   --blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;
-  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-400:#8aaac8;
-  --gray-600:#3d607f;--gray-800:#1a2e45;--white:#fff;
+  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-300:#b8c8dc;
+  --gray-400:#8aaac8;--gray-500:#6b8fae;--gray-600:#3d607f;
+  --gray-700:#2a4560;--gray-800:#1a2e45;--white:#fff;
   --radius:8px;--radius-lg:12px;
   --shadow:0 1px 3px rgba(0,58,107,0.08);--shadow-md:0 4px 20px rgba(0,58,107,0.11);
   --green:#16a34a;--green-lt:#dcfce7;--green-bd:#86efac;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);min-height:100vh;font-size:14px;}
+
 nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
 .nav-brand{font-size:15px;font-weight:800;color:#fff;letter-spacing:-0.02em;}
 .nav-links{display:flex;align-items:center;gap:2px;}
@@ -98,7 +108,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .btn-logout{background:#e53e3e !important;color:#fff !important;font-weight:700 !important;border-radius:6px;padding:6px 16px !important;margin-left:6px;}
 .btn-logout:hover{background:#c53030 !important;}
 
-/* ── BELL ── */
+/* NOTIFICATION BELL & DROPDOWN */
 .notif-wrap{position:relative;}
 .notif-btn{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:rgba(255,255,255,0.75);background:none;border:none;cursor:pointer;padding:6px 11px;border-radius:6px;font-family:'Plus Jakarta Sans',sans-serif;transition:all .15s;}
 .notif-btn:hover{color:#fff;background:rgba(255,255,255,0.1);}
@@ -107,34 +117,116 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.7;transform:scale(1.25);}}
 .notif-badge{background:#e53e3e;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0 4px;}
 .notif-badge.show{display:flex;}
-.notif-dropdown{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);width:340px;z-index:300;overflow:hidden;}
+
+.notif-dropdown{
+  display:none;
+  position:absolute;
+  top:calc(100% + 8px);
+  right:0;
+  background:var(--white);
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-md);
+  width:450px;
+  max-width:calc(100vw - 40px);
+  z-index:300;
+  overflow:hidden;
+}
 .notif-dropdown.open{display:block;}
-.notif-head{background:var(--blue-dk);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;}
+.notif-head{background:var(--blue-dk);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .notif-head-title{color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;}
 .notif-new-pill{background:rgba(255,255,255,0.2);color:#fff;font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;}
 .notif-mark{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;padding:4px 10px;border-radius:5px;cursor:pointer;transition:background .15s;}
 .notif-mark:hover{background:rgba(255,255,255,0.3);}
-.notif-caught{font-size:11px;color:rgba(255,255,255,0.55);}
-.notif-list{max-height:400px;overflow-y:auto;background:var(--white);}
-.notif-list::-webkit-scrollbar{width:4px;}
-.notif-list::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:99px;}
-.notif-item{display:flex;gap:12px;padding:12px 8px;border-bottom:1px solid var(--gray-100);transition:background .12s;align-items:flex-start;text-decoration:none;color:inherit;cursor:pointer;background:transparent;border-radius:0;margin:0;}
-.notif-item:first-child{padding-top:8px;}
-.notif-item:last-child{border-bottom:none;padding-bottom:8px;}
-.notif-item:hover{background:var(--gray-50);}
-.notif-item.unread{background:transparent;}
-.notif-icon{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;flex-shrink:0;margin-top:2px;}
-.notif-icon.type-logout{background:#fff3e0;color:#e65100;}
-.notif-icon.type-feedback{background:#e3f2fd;color:#1565c0;}
-.notif-icon.type-announce{background:#e8f5e9;color:#2e7d32;}
-.notif-icon.type-default{background:#f3e5f5;color:#6a1b9a;}
-.notif-content{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
-.notif-title{font-size:13px;color:var(--gray-800);font-weight:700;line-height:1.4;word-break:break-word;}
-.notif-desc{font-size:12px;color:var(--gray-600);line-height:1.4;word-break:break-word;font-weight:400;}
-.notif-time-right{font-size:12px;color:var(--gray-500);text-align:right;white-space:nowrap;font-weight:500;flex-shrink:0;}
-.notif-empty{padding:32px 16px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
+.notif-caught{font-size:11px;color:rgba(255,255,255,0.55);display:flex;align-items:center;gap:5px;}
 
-/* ── PAGE ── */
+.notif-list{
+  max-height:500px;
+  overflow-y:auto;
+  overflow-x:hidden;
+  background:var(--white);
+}
+.notif-list::-webkit-scrollbar{width:4px;}
+.notif-list::-webkit-scrollbar-track{background:var(--gray-100);}
+.notif-list::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:99px;}
+
+.notif-item{
+  display:flex;
+  gap:14px;
+  padding:16px 18px;
+  border-bottom:1px solid var(--gray-100);
+  transition:background .15s;
+  text-decoration:none;
+  color:inherit;
+  cursor:pointer;
+  width:100%;
+}
+.notif-item:first-child{padding-top:16px;}
+.notif-item:last-child{border-bottom:none;padding-bottom:16px;}
+.notif-item:hover{background:var(--gray-50);}
+.notif-item.unread{background:var(--blue-lt);}
+.notif-item.unread:hover{background:#dceef9;}
+
+.notif-icon{
+  display:inline-flex;
+  align-items:flex-start;
+  justify-content:center;
+  width:36px;
+  flex-shrink:0;
+}
+.notif-icon svg{
+  width:20px;
+  height:20px;
+  stroke:#4B5563;
+  stroke-width:1.8;
+  fill:none;
+}
+
+.notif-content{
+  flex:1;
+  min-width:0;
+}
+.notif-title{
+  font-size:14px;
+  color:var(--gray-800);
+  font-weight:700;
+  margin-bottom:6px;
+  line-height:1.4;
+  word-break:break-word;
+  white-space:normal;
+}
+.notif-desc{
+  font-size:13px;
+  color:var(--gray-600);
+  line-height:1.5;
+  word-break:break-word;
+  white-space:normal;
+  margin-bottom:8px;
+}
+.notif-desc br{
+  display:block;
+  content:"";
+  margin-top:4px;
+}
+.notif-date{
+  font-size:11px;
+  color:var(--gray-400);
+  display:flex;
+  align-items:center;
+  gap:6px;
+  margin-top:4px;
+}
+.notif-date::before{
+  content:"";
+  display:inline-block;
+  width:4px;
+  height:4px;
+  background:var(--gray-400);
+  border-radius:50%;
+}
+.notif-empty{padding:48px 24px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
+
+/* PAGE STYLES */
 .page-body{max-width:1100px;margin:0 auto;padding:32px 20px 60px;}
 .page-header{margin-bottom:20px;}
 .page-title{font-size:22px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;text-align:center;}
@@ -170,7 +262,20 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
 .page-btn:hover:not(.disabled){border-color:var(--blue);color:var(--blue);}
 .page-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;}
 .page-btn.disabled{opacity:.35;pointer-events:none;}
-@media(max-width:700px){table{font-size:12px;}thead th,tbody td{padding:9px 10px;}nav{padding:0 16px;}.search-wrap input{width:150px;}}
+
+@media(max-width:700px){
+  table{font-size:12px;}
+  thead th,tbody td{padding:9px 10px;}
+  nav{padding:0 16px;}
+  .search-wrap input{width:150px;}
+}
+@media(max-width:550px){
+  .notif-dropdown{width:calc(100vw - 30px);right:-10px;}
+  .notif-item{gap:10px;padding:12px 14px;}
+  .notif-icon{width:30px;}
+  .notif-title{font-size:13px;}
+  .notif-desc{font-size:12px;}
+}
 </style>
 </head>
 <body>
@@ -181,11 +286,11 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
     <div class="notif-wrap">
       <button class="notif-btn" onclick="toggleNotif()" id="notifBtn">
         <span class="bell-wrap">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
             <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
           </svg>
-          <?php if ($unread_count > 0): ?><span class="red-dot" id="redDot"></span><?php endif; ?>
+          <span class="red-dot" id="redDot" style="<?= $unread_count > 0 ? '' : 'display:none;' ?>"></span>
         </span>
         Notifications
         <span class="notif-badge <?= $unread_count > 0 ? 'show' : '' ?>" id="notifBadge">
@@ -195,10 +300,12 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
       <div class="notif-dropdown" id="notifDropdown">
         <div class="notif-head">
           <span class="notif-head-title">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="rgba(255,255,255,0.85)" stroke-width="2">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+            </svg>
             Notifications
-            <?php if ($unread_count > 0): ?>
-              <span class="notif-new-pill"><?= $unread_count ?> new</span>
-            <?php endif; ?>
+            <span class="notif-new-pill" id="newNotifPill" style="<?= $unread_count > 0 ? '' : 'display:none;' ?>"><?= $unread_count ?> new</span>
           </span>
           <span id="notifHeadRight">
             <?php if ($unread_count > 0): ?>
@@ -207,51 +314,37 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
                 <button type="submit" class="notif-mark">Mark all read</button>
               </form>
             <?php else: ?>
-              <span class="notif-caught">All caught up ✓</span>
+              <span class="notif-caught">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                All caught up
+              </span>
             <?php endif; ?>
           </span>
         </div>
         <div class="notif-list" id="notifList">
-          <?php if (empty($notifications)): ?>
-            <div class="notif-empty">No notifications yet.</div>
-          <?php else: ?>
-            <?php foreach ($notifications as $n):
-              $ts = (int)strtotime($n['created_at']);
-              
-              // Extract emoji and message
-              $emojiData = extractEmojiAndClean($n['message']);
-              
-              // Parse notification into title and description
-              $parsed = parseNotification($emojiData['text']);
-              
-              // Determine icon type and SVG
-              $msgLower = strtolower($n['message']);
-              if (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
-                $iconClass = 'type-logout';
-                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
-              } elseif (strpos($msgLower, 'feedback') !== false) {
-                $iconClass = 'type-feedback';
-                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-              } elseif (strpos($msgLower, 'announcement') !== false) {
-                $iconClass = 'type-announce';
-                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3zm-8.27 4a2 2 0 0 1-3.46 0"/></svg>';
-              } else {
-                $iconClass = 'type-default';
-                $iconSvg = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-              }
-            ?>
-              <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $n['is_read'] == 0 ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
-                <div class="notif-icon <?= $iconClass ?>"><?= $iconSvg ?></div>
-                <div class="notif-content">
-                  <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
-                  <?php if (!empty($parsed['description'])): ?>
-                    <div class="notif-desc"><?= htmlspecialchars($parsed['description']) ?></div>
-                  <?php endif; ?>
-                </div>
-                <div class="notif-time-right" data-ts="<?= $ts ?>"></div>
-              </a>
-            <?php endforeach; ?>
-          <?php endif; ?>
+          <div id="notifListContainer">
+            <?php if (empty($notifications)): ?>
+              <div class="notif-empty">No notifications yet.</div>
+            <?php else: ?>
+              <?php foreach ($notifications as $n):
+                $parsed = parseNotification($n['message']);
+                $ts = (int)strtotime($n['created_at']);
+                $isUnread = $n['is_read'] == 0;
+                $iconSvg = getNotificationIcon($n['message']);
+              ?>
+                <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $isUnread ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>" data-read="<?= $n['is_read'] ?>">
+                  <div class="notif-icon"><?= $iconSvg ?></div>
+                  <div class="notif-content">
+                    <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
+                    <?php if (!empty($parsed['description'])): ?>
+                      <div class="notif-desc"><?= nl2br(htmlspecialchars($parsed['description'])) ?></div>
+                    <?php endif; ?>
+                    <div class="notif-date" data-ts="<?= $ts ?>"></div>
+                  </div>
+                </a>
+              <?php endforeach; ?>
+            <?php endif; ?>
+          </div>
         </div>
       </div>
     </div>
@@ -312,12 +405,18 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
             <td class="td-name"><?= htmlspecialchars($r['fullname']) ?></td>
             <td><?= htmlspecialchars($r['sit_purpose']) ?></td>
             <td><?= htmlspecialchars($r['laboratory']) ?></td>
-            <td class="td-time"><?= !empty($r['login_time'])  ? date('M d, Y - h:i A', strtotime($r['login_time']))  : '&mdash;' ?></td>
+            <td class="td-time">
+              <?php if (!empty($r['login_time'])): ?>
+                <?= date('h:i A', strtotime($r['login_time'])) ?>
+              <?php else: ?>
+                &mdash;
+              <?php endif; ?>
+            </td>
             <td class="td-time">
               <?php if ($isOngoing): ?>
-                <?= '&mdash;' ?>
+                &mdash;
               <?php else: ?>
-                <?= date('M d, Y - h:i A', strtotime($r['logout_time'])) ?>
+                <?= date('h:i A', strtotime($r['logout_time'])) ?>
               <?php endif; ?>
             </td>
             <td><?= !empty($r['date']) ? date('M d, Y', strtotime($r['date'])) : '&mdash;' ?></td>
@@ -331,7 +430,7 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
           </tr>
           <?php endforeach; ?>
         <?php else: ?>
-          <tr><td colspan="9" class="no-data">No sit-in history found for your account.</td></tr>
+          <tr><td colspan="9" class="no-data">No sit-in history found for your account.<?= htmlspecialchars($r['fullname']) ?></td>
         <?php endif; ?>
       </tbody>
     </table>
@@ -343,149 +442,151 @@ tbody td{padding:12px 14px;font-size:13px;color:var(--gray-600);}
 </div>
 
 <script>
-// ═══════════════════════════════════════════════════════════════════════════
-// NOTIFICATION & HISTORY SYSTEM
-// ═══════════════════════════════════════════════════════════════════════════
-// 
-// NOTIFICATIONS:
-//   • Timestamps use data-ts (Unix integer) - JavaScript converts to relative times
-//   • relTime() displays: "Just now", "5m ago", "2h ago", "3d ago", or "Jan 15, 2026"
-//   • refreshTimestamps() updates every 60 seconds so times advance as you stay on page
-//   • pollNotifications() runs every 30 seconds to fetch new notifications from server
-//   • MySQL created_at ("2026-04-11 14:23:00") converted: .replace(' ','T') for parsing
-//   • Emoji stripped from messages automatically (no icons shown)
-//   • Badge shows unread count, red dot pulses when unread notifications exist
-//   • "Mark all read" button redirects back to history.php with all notifications marked read
-//
-// HISTORY TABLE:
-//   • Shows all sit-in records sorted by date DESC, created_at DESC
-//   • Fields: #, ID Number, Full Name, Purpose, Laboratory, Login Time, Logout Time, Date
-//   • Login Time: Displays as "5:25 PM" (12-hour format with AM/PM)
-//   • Logout Time: Displays as "6:30 PM" or "Ongoing" badge if session still active
-//   • Date: Shows formatted date like "Apr 11, 2026"
-//   • Green-highlighted rows show active (ongoing) sessions
-//   • Pageable and searchable - filter by purpose, lab, date, name, etc.
-//
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ── RELATIVE TIME ─────────────────────────────────────────────
+// FIXED: Proper time difference calculation
 function relTime(ts) {
   if (!ts || ts <= 0) return '';
-  var diff = Math.floor(Date.now() / 1000) - ts;
-  if (diff < 60)     return 'Just now';
-  if (diff < 3600)   return Math.floor(diff / 60) + 'm ago';
-  if (diff < 86400)  return Math.floor(diff / 3600) + 'h ago';
-  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+  var now = Math.floor(Date.now() / 1000);
+  var diff = now - ts;
+  
+  if (diff < 0) return 'Just now';
+  if (diff < 60) return 'Just now';
+  if (diff < 3600) {
+    var minutes = Math.floor(diff / 60);
+    return minutes + ' minute' + (minutes > 1 ? 's' : '') + ' ago';
+  }
+  if (diff < 86400) {
+    var hours = Math.floor(diff / 3600);
+    return hours + ' hour' + (hours > 1 ? 's' : '') + ' ago';
+  }
+  if (diff < 604800) {
+    var days = Math.floor(diff / 86400);
+    return days + ' day' + (days > 1 ? 's' : '') + ' ago';
+  }
   var d = new Date(ts * 1000);
   return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
+
 function refreshTimestamps() {
-  document.querySelectorAll('.notif-item').forEach(function(el) {
-    var timeEl = el.querySelector('.notif-time-right');
-    if (timeEl && timeEl.textContent) {
-      // Already formatted, no need to update
+  document.querySelectorAll('.notif-date[data-ts]').forEach(function(el) {
+    var ts = parseInt(el.getAttribute('data-ts'), 10);
+    if (!isNaN(ts) && ts > 0) {
+      el.textContent = relTime(ts);
     }
   });
 }
-// Initial refresh and then every minute
-refreshTimestamps();
-setInterval(refreshTimestamps, 60000);
 
-// Initial poll on page load
-window.addEventListener('load', function() {
-  pollNotifications();
-});
+// REAL-TIME NOTIFICATION POLLING (No Page Refresh)
+var currentUnreadCount = <?= $unread_count ?>;
 
-// ── STRIP LEADING EMOJI ───────────────────────────────────────
-function stripEmoji(str) {
-  return str.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{FE00}-\u{FEFF}\u{1F300}-\u{1F9FF}\s]+/gu, '').trim();
-}
-
-// ── NOTIFICATION POLLING ──────────────────────────────────────
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-function parseNotification(msg) {
-  msg = stripEmoji(msg);
-  if (msg.includes('New announcement from')) {
-    var parts = msg.split(': ');
-    return {
-      title: parts[0],
-      desc: parts[1] ? parts[1].substring(0, 85) : '',
-    };
-  }
-  return {
-    title: msg.substring(0, 45),
-    desc: msg.substring(45, 100),
-  };
-}
-function highlightAnnouncementTitle(title) {
-  if (title.includes('New announcement from')) {
-    return '<span class="announcement-highlight">' + escHtml(title) + '</span>';
-  }
-  return title;
-}
-function formatRelTime(created_at) {
-  var ts = Math.floor(new Date(created_at.replace(' ','T')).getTime() / 1000);
-  var now = Math.floor(Date.now() / 1000);
-  var diff = now - ts;
-  if (diff < 60) return 'Just now';
-  if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-  if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-  if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
-  return 'Long ago';
-}
-function renderNotifItem(n) {
-  var notif = parseNotification(n.message);
-  var relTime = formatRelTime(n.created_at);
-  var title = highlightAnnouncementTitle(escHtml(notif.title));
-  var desc = escHtml(notif.desc);
-  var cls = parseInt(n.is_read) === 0 ? 'notif-item unread' : 'notif-item read';
-  return '<a href="notification_handler.php?id=' + n.id + '" class="' + cls + '" data-id="' + n.id + '" style="text-decoration:none;color:inherit;">' 
-       + '<div class="notif-dot"></div>'
-       + '<div class="notif-content">'
-       + '<div class="notif-title">' + title + '</div>'
-       + (desc ? '<div class="notif-msg">' + desc + '</div>' : '')
-       + '</div>'
-       + '<div class="notif-time-right">' + relTime + '</div>'
-       + '</a>';
-}
 function pollNotifications() {
   fetch('notification_ajax.php?action=fetch')
-    .then(function(r){ return r.json(); })
+    .then(function(response) { return response.json(); })
     .then(function(data) {
       if (!data || !data.notifications) return;
-      var list      = document.getElementById('notifList');
-      var badge     = document.getElementById('notifBadge');
+      
+      var container = document.getElementById('notifListContainer');
+      var badge = document.getElementById('notifBadge');
+      var redDot = document.getElementById('redDot');
+      var newPill = document.getElementById('newNotifPill');
       var headRight = document.getElementById('notifHeadRight');
-      list.innerHTML = data.notifications.length
-        ? data.notifications.map(renderNotifItem).join('')
-        : '<div class="notif-empty">No notifications yet.</div>';
-      refreshTimestamps();
-      var unread = data.notifications.filter(function(n){ return parseInt(n.is_read) === 0; }).length;
-      if (unread > 0) {
-        badge.textContent = unread > 99 ? '99+' : String(unread);
+      
+      currentUnreadCount = data.notifications.filter(function(n) { return parseInt(n.is_read) === 0; }).length;
+      
+      if (currentUnreadCount > 0) {
+        badge.textContent = currentUnreadCount > 99 ? '99+' : currentUnreadCount;
         badge.classList.add('show');
-        if (!document.getElementById('redDot')) {
-          var dot = document.createElement('span'); dot.className='red-dot'; dot.id='redDot';
-          document.querySelector('.bell-wrap').appendChild(dot);
-        }
+        if (redDot) redDot.style.display = '';
+        if (newPill) { newPill.style.display = ''; newPill.textContent = currentUnreadCount + ' new'; }
         headRight.innerHTML = '<form method="POST" action="history.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
       } else {
-        badge.textContent = ''; badge.classList.remove('show');
-        var dot = document.getElementById('redDot'); if (dot) dot.remove();
-        headRight.innerHTML = '<span class="notif-caught">All caught up ✓</span>';
+        badge.classList.remove('show');
+        badge.textContent = '';
+        if (redDot) redDot.style.display = 'none';
+        if (newPill) newPill.style.display = 'none';
+        headRight.innerHTML = '<span class="notif-caught"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All caught up</span>';
       }
-    }).catch(function(){});
+      
+      if (data.notifications.length > 0) {
+        var html = '';
+        data.notifications.forEach(function(n) {
+          var parsed = parseNotificationJS(n.message);
+          var iconSvg = getNotificationIconJS(n.message);
+          var isUnreadClass = parseInt(n.is_read) === 0 ? 'unread' : 'read';
+          html += '<a href="notification_handler.php?id=' + n.id + '" class="notif-item ' + isUnreadClass + '" data-id="' + n.id + '">' +
+                  '<div class="notif-icon">' + iconSvg + '</div>' +
+                  '<div class="notif-content">' +
+                  '<div class="notif-title">' + escapeHtml(parsed.title) + '</div>' +
+                  (parsed.description ? '<div class="notif-desc">' + escapeHtml(parsed.description).replace(/\n/g, '<br>') + '</div>' : '') +
+                  '<div class="notif-date" data-ts="' + Math.floor(new Date(n.created_at.replace(' ', 'T')).getTime() / 1000) + '"></div>' +
+                  '</div>' +
+                  '</a>';
+        });
+        container.innerHTML = html;
+      } else {
+        container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+      }
+      
+      refreshTimestamps();
+    })
+    .catch(function(error) {
+      console.log('Polling error:', error);
+    });
 }
-// Poll every 30 seconds for new notifications
-setInterval(pollNotifications, 30000);
 
-// ── BELL TOGGLE ───────────────────────────────────────────────
+// JavaScript versions of PHP helper functions
+function parseNotificationJS(text) {
+  text = text.trim();
+  text = text.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{FE00}-\u{FEFF}\u{1F300}-\u{1F9FF}\s]+/u, '');
+  
+  if (text.indexOf('New announcement from') === 0) {
+    var parts = text.split(':');
+    return { title: parts[0], description: parts[1] ? parts[1].trim() : '' };
+  }
+  if (text.indexOf('feedback') !== false) {
+    var cleanText = text.replace(/^[💬]*\s*You received feedback from admin:\s*/i, '');
+    return { title: 'Feedback Received', description: cleanText.trim() };
+  }
+  if (text.indexOf('logged out') !== false || text.indexOf('Logged out') !== false) {
+    var cleanText = text.replace(/^[📤]*\s*/, '');
+    return { title: 'Session Ended', description: cleanText.trim() };
+  }
+  var lines = text.split('\n');
+  return { title: lines[0], description: lines[1] ? lines[1].trim() : '' };
+}
+
+function getNotificationIconJS(message) {
+  var msgLower = message.toLowerCase();
+  if (msgLower.indexOf('announcement') !== false) {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  } else if (msgLower.indexOf('feedback') !== false) {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  } else if (msgLower.indexOf('logged out') !== false || msgLower.indexOf('logout') !== false) {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+  } else {
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return '';
+  return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Initial load
+refreshTimestamps();
+
+// Start polling every 15 seconds
+setInterval(refreshTimestamps, 30000);
+setInterval(pollNotifications, 15000);
+pollNotifications(); // Initial poll
+
 var notifOpen = false;
 function toggleNotif() {
   notifOpen = !notifOpen;
   document.getElementById('notifDropdown').classList.toggle('open', notifOpen);
+  if (notifOpen) {
+    refreshTimestamps();
+  }
 }
 document.addEventListener('click', function(e) {
   var wrap = document.querySelector('.notif-wrap');
@@ -495,10 +596,10 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── TABLE PAGINATION & SEARCH ─────────────────────────────────
-var allRows    = Array.from(document.querySelectorAll('#tableBody tr[data-index]'));
-var filtered   = allRows.slice();
-var perPage    = 10;
+// TABLE PAGINATION & SEARCH
+var allRows = Array.from(document.querySelectorAll('#tableBody tr[data-index]'));
+var filtered = allRows.slice();
+var perPage = 10;
 var currentPage = 1;
 if (allRows.length > 0) render();
 
@@ -509,7 +610,7 @@ function applySearch(q) {
 }
 function changeEntries(val) { perPage = parseInt(val); currentPage = 1; render(); }
 function render() {
-  var total      = filtered.length;
+  var total = filtered.length;
   var totalPages = Math.max(1, Math.ceil(total / perPage));
   if (currentPage > totalPages) currentPage = totalPages;
   var start = (currentPage - 1) * perPage, end = start + perPage;
@@ -528,7 +629,7 @@ function render() {
     noRow.style.display = '';
   } else { if (noRow) noRow.style.display = 'none'; }
   var from = total === 0 ? 0 : start + 1, to = Math.min(end, total);
-  document.getElementById('showingLabel').textContent =
+  document.getElementById('showingLabel').innerHTML = 
     'Showing ' + from + ' to ' + to + ' of ' + total + ' entr' + (total === 1 ? 'y' : 'ies');
   buildPagination(totalPages);
 }
