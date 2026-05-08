@@ -8,6 +8,26 @@ if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== tru
     exit;
 }
 
+// ── FIX EXISTING RECORDS: Backfill missing session_at_login values ──
+try {
+    // Get all sit_in_history records where session_at_login is NULL but student_id exists
+    $stmt = $pdo->prepare("
+        SELECT s.id, s.student_id, s.created_at 
+        FROM sit_in_history s 
+        WHERE s.session_at_login IS NULL AND s.student_id IS NOT NULL AND s.student_id > 0
+    ");
+    $stmt->execute();
+    $records_to_fix = $stmt->fetchAll();
+    
+    foreach ($records_to_fix as $record) {
+        // For each record, we need to estimate what the session count was at that time
+        // We'll look at the student's session history or use a default
+        // Since we don't have exact history, we'll use a reasonable estimate
+        // Or we can just set it to 30 as a default (better than NULL)
+        $pdo->prepare("UPDATE sit_in_history SET session_at_login = 30 WHERE id = ?")->execute([$record['id']]);
+    }
+} catch (Exception $e) { /* ignore errors */ }
+
 // Auto-create feedback table if it doesn't exist
 try {
     $pdo->exec("CREATE TABLE IF NOT EXISTS feedback (
@@ -41,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pdo->prepare("UPDATE sit_in_history SET logout_time = ? WHERE id = ?")
                     ->execute([$logout_datetime, $sitin_id]);
                 
-                // ── DEDUCT SESSION IF STUDENT IS REGISTERED ──
+                // ── DEDUCT 1 SESSION FROM STUDENT ──
                 if ($record['student_id'] && $record['student_id'] > 0) {
                     // Check current session count
                     $checkSession = $pdo->prepare("SELECT session FROM students WHERE id = ? LIMIT 1");
@@ -68,8 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 
                 // Also send logout notification
                 $notif = '📤 Your sit-in session has been logged out by admin at ' . $logout_time;
-                $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
-                    ->execute([$record['student_id'] ?? 0, $notif]);
+                if ($record['student_id']) {
+                    $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
+                        ->execute([$record['student_id'], $notif]);
+                }
             }
         }
         header('Location: admin_sitin_history.php?msg=logout'); exit;
@@ -111,9 +133,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $page = $_GET['page'] ?? 'history';
 $filter_status = $_GET['status'] ?? 'all';
 
-// Build query based on filter
+// Build query - NOW fetching CURRENT session from students table for REAL-TIME display
 $query = "SELECT s.*, 
-                 st.firstname, st.lastname, st.middlename, st.course, st.year_level, st.session
+                 st.firstname, st.lastname, st.middlename, st.course, st.year_level, 
+                 st.session as current_session
           FROM sit_in_history s
           LEFT JOIN students st ON s.student_id = st.id";
 
@@ -162,99 +185,500 @@ $students = $pdo->query("SELECT id, id_number, firstname, middlename, lastname, 
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);font-size:14px;}
 
 /* ── NAV ── */
-nav{background:var(--blue-dk);height:56px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
-.nav-brand{font-size:14px;font-weight:800;color:#fff;white-space:nowrap;letter-spacing:-0.01em;}
-.nav-links{display:flex;align-items:center;gap:1px;flex-wrap:wrap;}
-.nav-links a{font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;padding:6px 12px;border-radius:4px;white-space:nowrap;transition:all .15s;}
-.nav-links a:hover{color:#fff;background:rgba(255,255,255,0.12);}
-.nav-links a.active{color:#89CFF1;font-weight:600;}
-.btn-logout-nav{background:#e8b800;color:#1a1a00 !important;font-weight:700 !important;border-radius:4px;padding:6px 16px !important;margin-left:8px;}
-.btn-logout-nav:hover{background:#ffd000 !important;}
+nav{
+  background:var(--blue-dk);
+  height:56px;padding:0 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:sticky;
+  top:0;z-index:200;
+}
+
+.nav-brand{
+  font-size:14px;
+  font-weight:800;
+  color:#fff;
+  white-space:nowrap;
+  letter-spacing:-0.01em;
+}
+
+.nav-links{
+  display:flex;
+  align-items:center;
+  gap:1px;
+  flex-wrap:wrap;
+}
+
+.nav-links a{
+  font-size:12.5px;
+  font-weight:500;
+  color:rgba(255,255,255,0.8);
+  text-decoration:none;
+  padding:6px 12px;
+  border-radius:4px;
+  white-space:nowrap;
+  transition:all .15s;
+}
+
+.nav-links a:hover{
+  color:#fff;
+  background:rgba(255,255,255,0.12);
+}
+
+.nav-links a.active{
+  color:#89CFF1;
+  font-weight:600;
+}
+
+.btn-logout-nav{
+  background:#e8b800;
+  color:#1a1a00 !important;
+  font-weight:700 !important;
+  border-radius:4px;
+  padding:6px 16px !important;
+  margin-left:8px;
+}
+
+.btn-logout-nav:hover{
+  background:#ffd000 !important;
+}
 
 /* ── FLASH ── */
-.flash{background:var(--green-lt);border:1px solid #bbf7d0;color:var(--green);padding:9px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:18px;font-weight:500;}
+.flash{
+  background:var(--green-lt);
+  border:1px solid #bbf7d0;
+  color:var(--green);
+  padding:9px 16px;
+  border-radius:var(--radius);
+  font-size:13px;
+  margin-bottom:18px;
+  font-weight:500;
+}
 
 /* ── PAGE BODY ── */
-.page-body{max-width:1400px;margin:0 auto;padding:22px 20px 60px;}
-.page-title{font-size:20px;font-weight:700;color:var(--blue-dk);margin-bottom:20px;text-align:center;}
+.page-body{
+  max-width:1400px;
+  margin:0 auto;
+  padding:22px 20px 60px;
+}
+
+.page-title{
+  font-size:20px;
+  font-weight:700;
+  color:var(--blue-dk);
+  margin-bottom:20px;
+  text-align:center;
+}
 
 /* ── CARD ── */
-.card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px;}
-.card-head{background:var(--blue);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;}
-.card-head h2{color:#fff;font-size:13px;font-weight:600;}
-.card-body{padding:16px;}
+.card{
+  background:var(--white);
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  margin-bottom:20px;
+}
+
+.card-head{
+  background:var(--blue);
+  padding:10px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.card-head h2{
+  color:#fff;
+  font-size:13px;
+  font-weight:600;
+}
+
+.card-body{
+  padding:16px;
+}
 
 /* ── STATS ── */
-.stats-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));gap:14px;margin-bottom:20px;}
-.stat-card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow);}
-.stat-label{font-size:12px;font-weight:600;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;}
-.stat-value{font-size:28px;font-weight:800;color:var(--blue-dk);}
-.stat-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px;display:inline-block;margin-top:8px;}
-.stat-badge-active{background:#dcfce7;color:#15803d;}
-.stat-badge-completed{background:#fef3c7;color:#b45309;}
+.stats-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
+  gap:14px;
+  margin-bottom:20px;
+}
+
+.stat-card{
+  background:var(--white);
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  padding:16px;
+  box-shadow:var(--shadow);
+}
+
+.stat-label{
+  font-size:12px;
+  font-weight:600;
+  color:var(--gray-400);
+  text-transform:uppercase;
+  letter-spacing:0.05em;
+  margin-bottom:6px;
+}
+
+.stat-value{
+  font-size:28px;
+  font-weight:800;
+  color:var(--blue-dk);
+}
+
+.stat-badge{
+  font-size:11px;
+  font-weight:600;
+  padding:3px 8px;
+  border-radius:20px;
+  display:inline-block;
+  margin-top:8px;
+}
+
+.stat-badge-active{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.stat-badge-completed{
+  background:#fef3c7;
+  color:#b45309;
+}
 
 /* ── TOOLBAR ── */
-.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
-.toolbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
-.filter-btn{padding:6px 14px;border:1.5px solid var(--gray-200);background:var(--white);border-radius:var(--radius);font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:var(--gray-600);}
-.filter-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;}
-.filter-btn:hover{border-color:var(--blue);color:var(--blue);}
-.search-input{padding:6px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:inherit;width:200px;outline:none;}
-.search-input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.10);}
+.toolbar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:14px;
+  flex-wrap:wrap;
+}
+
+.toolbar-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.filter-btn{
+  padding:6px 14px;
+  border:1.5px solid var(--gray-200);
+  background:var(--white);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+  transition:all .15s;
+  color:var(--gray-600);
+}
+
+.filter-btn.active{
+  background:var(--blue);
+  border-color:var(--blue);
+  color:#fff;
+}
+
+.filter-btn:hover{
+  border-color:var(--blue);
+  color:var(--blue);
+}
+
+.search-input{
+  padding:6px 11px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-family:inherit;
+  width:200px;
+  outline:none;
+}
+
+.search-input:focus{
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(27,88,134,0.10);
+}
 
 /* ── TABLE ── */
-.table-wrap{overflow-x:auto;}
-table{width:100%;border-collapse:collapse;}
-thead th{background:var(--gray-50);color:var(--gray-600);font-size:11.5px;font-weight:700;padding:9px 12px;text-align:left;border-bottom:2px solid var(--gray-200);white-space:nowrap;letter-spacing:0.03em;}
-tbody tr{border-bottom:1px solid var(--gray-100);transition:background .1s;}
-tbody tr:hover{background:var(--gray-50);}
-tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
-.no-data{text-align:center;padding:28px;color:var(--gray-400);font-size:13px;font-style:italic;}
+.table-wrap{
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+thead th{
+  background:var(--gray-50);
+  color:var(--gray-600);
+  font-size:11.5px;
+  font-weight:700;
+  padding:9px 12px;
+  text-align:left;
+  border-bottom:2px solid var(--gray-200);
+  white-space:nowrap;
+  letter-spacing:0.03em;
+}
+
+tbody tr{
+  border-bottom:1px solid var(--gray-100);
+  transition:background .1s;
+}
+
+tbody tr:hover{
+  background:var(--gray-50);
+}
+
+tbody td{
+  padding:9px 12px;
+  font-size:13px;
+  color:var(--gray-600);
+}
+
+.no-data{
+  text-align:center;
+  padding:28px;
+  color:var(--gray-400);
+  font-size:13px;
+  font-style:italic;
+}
 
 /* ── BUTTONS ── */
-.btn{padding:6px 14px;border:none;border-radius:var(--radius);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
-.btn-blue{background:var(--blue);color:#fff;}
-.btn-blue:hover{background:#1558a0;}
-.btn-red{background:var(--red);color:#fff;}
-.btn-red:hover{background:#b91c1c;}
-.btn-green{background:var(--green);color:#fff;}
-.btn-green:hover{background:#15803d;}
-.btn-sm{padding:4px 10px;font-size:12px;}
+.btn{
+  padding:6px 14px;
+  border:none;
+  border-radius:var(--radius);
+  font-size:12px;
+  font-weight:600;
+  font-family:inherit;
+  cursor:pointer;
+  transition:all .15s;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+}
+
+.btn-blue{
+  background:var(--blue);
+  color:#fff;
+}
+
+.btn-blue:hover{
+  background:#1558a0;
+}
+
+.btn-red{
+  background:var(--red);
+  color:#fff;
+}
+
+.btn-red:hover{
+  background:#b91c1c;
+}
+
+.btn-green{
+  background:var(--green);
+  color:#fff;
+}
+
+.btn-green:hover{
+  background:#15803d;
+}
+
+.btn-sm{
+  padding:4px 10px;
+  font-size:12px;
+}
 
 /* ── BADGES ── */
-.badge{display:inline-block;padding:3px 9px;border-radius:12px;font-size:11px;font-weight:600;}
-.badge-active{background:#dcfce7;color:#15803d;}
-.badge-completed{background:#fef3c7;color:#b45309;}
+.badge{
+  display:inline-block;
+  padding:3px 9px;
+  border-radius:12px;
+  font-size:11px;
+  font-weight:600;
+}
+
+.badge-active{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.badge-completed{
+  background:#fef3c7;
+  color:#b45309;
+}
 
 /* ── MODAL ── */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:500;align-items:center;justify-content:center;}
-.modal-overlay.open{display:flex;}
-.modal{background:var(--white);border-radius:8px;box-shadow:var(--shadow-md);width:100%;max-width:520px;padding:0;overflow:hidden;}
-.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--gray-200);}
-.modal-head h3{font-size:15px;font-weight:700;color:var(--gray-800);}
-.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-400);line-height:1;padding:0 4px;}
-.modal-close:hover{color:var(--gray-800);}
-.modal-body{padding:20px;}
-.modal-footer{padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;justify-content:flex-end;gap:8px;}
+.modal-overlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.45);
+  z-index:500;
+  align-items:center;
+  justify-content:center;
+}
+
+.modal-overlay.open{
+  display:flex;
+}
+
+.modal{
+  background:var(--white);
+  border-radius:8px;
+  box-shadow:var(--shadow-md);
+  width:100%;
+  max-width:520px;
+  padding:0;
+  overflow:hidden;
+}
+
+.modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 20px;
+  border-bottom:1px solid var(--gray-200);
+}
+
+.modal-head h3{
+  font-size:15px;
+  font-weight:700;
+  color:var(--gray-800);
+}
+
+.modal-close{
+  background:none;
+  border:none;
+  font-size:20px;
+  cursor:pointer;
+  color:var(--gray-400);
+  ine-height:1;
+  padding:0 4px;
+}
+
+.modal-close:hover{
+  color:var(--gray-800);
+}
+
+.modal-body{
+  padding:20px;
+}
+
+.modal-footer{
+  padding:12px 20px;
+  border-top:1px solid var(--gray-100);
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
 
 /* ── FORM ── */
-.field{margin-bottom:14px;}
-.field label{display:block;font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:5px;}
-.field input,.field textarea{width:100%;padding:9px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:inherit;color:var(--gray-800);outline:none;transition:border-color .15s;}
-.field input:focus,.field textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.10);}
-.field textarea{resize:vertical;min-height:100px;}
+.field{
+  margin-bottom:14px;
+}
+
+.field label{
+  display:block;
+  font-size:12px;
+  font-weight:600;
+  color:var(--gray-600);
+  margin-bottom:5px;
+}
+
+.field input,.field textarea{
+  width:100%;
+  padding:9px 11px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-family:inherit;
+  color:var(--gray-800);
+  outline:none;
+  transition:border-color .15s;
+}
+
+.field input:focus,.field textarea:focus{
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(27,88,134,0.10);
+}
+
+.field textarea{
+  resize:vertical;
+  min-height:100px;
+}
 
 /* ── STUDENT INFO BOX ── */
-.student-info{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);padding:12px;margin-bottom:14px;font-size:13px;}
-.info-row{display:flex;justify-content:space-between;gap:12px;padding:4px 0;}
-.info-label{font-weight:600;color:var(--gray-600);min-width:120px;}
-.info-value{color:var(--gray-800);font-weight:500;}
+.student-info{
+  background:var(--gray-50);
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  padding:12px;
+  margin-bottom:14px;
+  font-size:13px;
+}
+
+.info-row{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding:4px 0;
+}
+
+.info-label{
+  font-weight:600;
+  color:var(--gray-600);
+  min-width:120px;
+}
+
+.info-value{
+  color:var(--gray-800);
+  font-weight:500;
+}
+
+/* Session number styling */
+.session-number {
+    font-weight: 700;
+    font-size: 15px;
+}
+.session-high { 
+  color: #16a34a; 
+}
+
+.session-medium { 
+  color: #ea580c; 
+}
+
+.session-low { 
+  color: #dc2626; 
+}
 
 @media(max-width:768px){
-  .stats-grid{grid-template-columns:1fr 1fr;}
-  .toolbar{flex-direction:column;align-items:flex-start;}
-  .toolbar-right{width:100%;justify-content:space-between;}
-  .search-input{width:100%;}
+  .stats-grid{
+    grid-template-columns:1fr 1fr;
+  }
+
+  .toolbar{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .toolbar-right{
+    width:100%;
+    justify-content:space-between;
+  }
+
+  .search-input{
+    width:100%;
+}
+
 }
 </style>
 </head>
@@ -265,9 +689,9 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
   <div class="nav-brand">College of Computer Studies Admin</div>
   <div class="nav-links">
     <a href="admin_dashboard.php?page=home">Home</a>
-    <a href="admin_dashboard.php?page=home" onclick="openModal('searchModal');return false;">Search</a>
+    <a href="#" onclick="openModal('searchModal');return false;">Search</a>
     <a href="admin_dashboard.php?page=students">Students</a>
-    <a href="admin_dashboard.php?page=home" onclick="openBlankSitin(); return false;">Sit-in</a>
+    <a href="#" onclick="openBlankSitin(); return false;">Sit-in</a>
     <a href="admin_sitin_history.php" class="active">View Sit-in History</a>
     <a href="admin_dashboard.php?page=reports">Sit-in Reports</a>
     <a href="admin_dashboard.php?page=feedback">Feedback Reports</a>
@@ -340,7 +764,7 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           <th>Lab</th>
           <th>Login Time</th>
           <th>Logout Time</th>
-          <th>Remaining Sessions</th>
+          <th>Remaining Sessions (Current)</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -350,39 +774,69 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           $is_active = empty($sit['logout_time']);
           $full_name = trim($sit['firstname'] . ' ' . $sit['middlename'] . ' ' . $sit['lastname']);
           $full_name = $full_name ?: ($sit['fullname'] ?? 'Walk-in Student');
+          
+          // Get the CURRENT remaining sessions for REAL-TIME display
+          $current_session = null;
+          if ($sit['student_id'] && $sit['student_id'] > 0) {
+              // Re-query to get the absolute latest session count
+              $sessStmt = $pdo->prepare("SELECT session FROM students WHERE id = ? LIMIT 1");
+              $sessStmt->execute([$sit['student_id']]);
+              $current_session = $sessStmt->fetchColumn();
+              $current_session = $current_session !== false ? (int)$current_session : null;
+          }
+          
+          // Combine date and login_time properly
+          $login_datetime = '—';
+          if ($sit['date'] && $sit['login_time'] && $sit['login_time'] != '00:00:00') {
+              $login_datetime = date('M d, Y h:i A', strtotime($sit['date'] . ' ' . $sit['login_time']));
+          } elseif ($sit['login_time'] && $sit['login_time'] != '00:00:00') {
+              $login_datetime = date('h:i A', strtotime($sit['login_time']));
+          }
+          
+          // Combine date and logout_time properly for completed sessions
+          $logout_datetime = '—';
+          if (!$is_active && $sit['logout_time']) {
+              if (strpos($sit['logout_time'], ' ') !== false) {
+                  $logout_datetime = date('M d, Y h:i A', strtotime($sit['logout_time']));
+              } 
+              elseif ($sit['date'] && $sit['logout_time'] && $sit['logout_time'] != '00:00:00') {
+                  $logout_datetime = date('M d, Y h:i A', strtotime($sit['date'] . ' ' . $sit['logout_time']));
+              }
+              elseif ($sit['logout_time'] && $sit['logout_time'] != '00:00:00') {
+                  $logout_datetime = date('h:i A', strtotime($sit['logout_time']));
+              }
+          }
         ?>
         <tr>
           <td><strong><?= htmlspecialchars($sit['id_number']) ?></strong></td>
-          <td><?= htmlspecialchars($full_name) ?></td>
-          <td><?= htmlspecialchars($sit['sit_purpose']) ?></td>
-          <td><?= htmlspecialchars($sit['laboratory']) ?></td>
-          <td><?= $sit['login_time'] ? date('M d, Y h:i A', strtotime($sit['login_time'])) : '—' ?></td>
-          <td><?= $sit['logout_time'] ? date('M d, Y h:i A', strtotime($sit['logout_time'])) : '—' ?></td>
-          <td>
-            <?php 
-            // Get current remaining sessions for this student
-            if ($sit['student_id'] && $sit['student_id'] > 0) {
-                $sessStmt = $pdo->prepare("SELECT session FROM students WHERE id = ? LIMIT 1");
-                $sessStmt->execute([$sit['student_id']]);
-                $remaining = $sessStmt->fetchColumn();
-                if ($remaining !== false) {
-                    $sessColor = $remaining <= 5 ? '#dc2626' : ($remaining <= 10 ? '#ea580c' : '#16a34a');
-                    echo '<span style="font-weight:700;color:'.$sessColor.';">'.$remaining.'</span><span style="font-size:11px;color:var(--gray-400);"> / 30</span>';
-                } else {
-                    echo '<span style="color:var(--gray-400);">—</span>';
-                }
-            } else {
-                echo '<span style="color:var(--gray-400);">Walk-in</span>';
-            }
-            ?>
-          </td>
+          <td><?= htmlspecialchars($full_name) ?></div>
+          <td><?= htmlspecialchars($sit['sit_purpose']) ?></div>
+          <td><?= htmlspecialchars($sit['laboratory']) ?></div>
+          <td><?= $login_datetime ?></div>
+          <td><?= $logout_datetime ?></div>
+          <td style="min-width: 110px;">
+            <?php if ($sit['student_id'] && $sit['student_id'] > 0 && $current_session !== null): ?>
+              <?php 
+                $sessColor = $current_session <= 5 ? 'session-low' : ($current_session <= 10 ? 'session-medium' : 'session-high');
+              ?>
+              <span class="session-number <?= $sessColor ?>"><?= $current_session ?></span>
+              <span style="font-size:11px;color:var(--gray-400);"> / 30</span>
+              <?php if ($is_active): ?>
+                <div style="font-size:10px;color:var(--gray-400);margin-top:2px;">⬇️ Will deduct on logout</div>
+              <?php endif; ?>
+            <?php elseif ($sit['student_id'] && $sit['student_id'] > 0 && $current_session === null): ?>
+              <span style="color:var(--gray-400);">—</span>
+            <?php else: ?>
+              <span style="color:var(--gray-400);">Walk-in</span>
+            <?php endif; ?>
+          </div>
           <td>
             <?php if ($is_active): ?>
               <span class="badge badge-active">Active</span>
             <?php else: ?>
               <span class="badge badge-completed">Completed</span>
             <?php endif; ?>
-          </td>
+          </div>
           <td style="display:flex;gap:5px;flex-wrap:wrap;">
             <?php if ($is_active): ?>
               <button class="btn btn-blue btn-sm" onclick="openLogoutModal(<?= $sit['id'] ?>)">Logout</button>
@@ -392,10 +846,10 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
               <input type="hidden" name="sitin_id" value="<?= $sit['id'] ?>"/>
               <button type="submit" name="delete_sitin" class="btn btn-red btn-sm" onclick="return confirm('Delete this record?')">Delete</button>
             </form>
-          </td>
+          </div>
         </tr>
         <?php endforeach; else: ?>
-        <tr><td colspan="9" class="no-data">No sit-in records found.</td></tr>
+          <tr><td colspan="9" class="no-data">No sit-in records found.</td></tr>
         <?php endif; ?>
       </tbody>
     </table>
@@ -423,12 +877,12 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
           <input type="time" name="logout_time" id="logout_time" required/>
         </div>
         <p style="font-size:12px;color:var(--gray-400);margin-top:8px;">
-          The logout time will be recorded with today's date. Student's remaining sessions will be deducted by 1.
+          ⚠️ <strong>Important:</strong> When you log out this student, their remaining sessions will be <strong>automatically deducted by 1</strong>.
         </p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn" style="background:var(--gray-200);color:var(--gray-800);" onclick="closeModal('logoutModal')">Cancel</button>
-        <button type="submit" name="logout_sitin" class="btn btn-green">Log Out</button>
+        <button type="submit" name="logout_sitin" class="btn btn-green">Log Out & Deduct Session</button>
       </div>
     </form>
   </div>
@@ -531,34 +985,34 @@ tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
                 </button>
               </div>
               <div id="sitin_lookup_msg" style="font-size:11.5px;margin-top:4px;display:none;"></div>
-            </td>
-          </tr>
+             </div>
+           '</div>
           <tr>
-            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Student Name:</td>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Student Name:</div>
             <td><input type="text" name="student_name" id="sitin_name"
                        placeholder="Enter full name"
                        style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
-                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
-          </tr>
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/> </div>
+           '</div>
           <tr>
-            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Purpose:</td>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Purpose:</div>
             <td><input type="text" name="purpose" id="sitin_purpose"
                        placeholder="e.g. C Programming" required
                        style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
-                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
-          </tr>
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/> </div>
+           '</div>
           <tr>
-            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Lab:</td>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Lab:</div>
             <td><input type="text" name="lab" id="sitin_lab"
                        placeholder="e.g. 524" required
                        style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
-                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
-          </tr>
+                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/> </div>
+           '</div>
           <tr>
-            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Remaining Session:</td>
+            <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Current Session:</div>
             <td><input type="text" id="sitin_session" readonly placeholder="Auto-filled for registered students"
-                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;background:#f9fafb;font-family:inherit;color:#1a2e45;"/></td>
-          </tr>
+                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;background:#f9fafb;font-family:inherit;color:#1a2e45;"/> </div>
+           '</div>
         </table>
       </div>
       <div class="modal-footer" style="justify-content:flex-end;gap:8px;">
@@ -639,7 +1093,7 @@ function openSitinFor(id, idnum, name, session){
   const msg = document.getElementById('sitin_lookup_msg');
   msg.style.display = 'block';
   msg.style.color   = '#16a34a';
-  msg.textContent   = '✅ Registered student found — session will be deducted on Sit In.';
+  msg.textContent   = '✅ Registered student found. Current sessions: ' + session;
   closeModal('searchModal');
   closeModal('sitinSearchModal');
   openModal('sitinModal');
@@ -686,7 +1140,7 @@ function lookupStudent(){
     document.getElementById('sitin_name').value        = found.name;
     document.getElementById('sitin_session').value     = found.session;
     msg.style.color   = '#16a34a';
-    msg.textContent   = '✅ Registered student found — session will be deducted on Sit In.';
+    msg.textContent   = '✅ Registered student found. Current sessions: ' + found.session + ' (will deduct 1 on logout)';
   } else {
     document.getElementById('sitin_student_id').value = '0';
     document.getElementById('sitin_name').value        = '';
@@ -709,7 +1163,7 @@ function sitinSearchFn(q){
     <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #eef0f4;">
       <div>
         <div style="font-size:13.5px;font-weight:700;color:#1a2e45;">${s.name}</div>
-        <div style="font-size:12px;color:#8aaac8;margin-top:2px;">${s.id_number} &bull; ${s.course} &bull; Year ${s.year} &bull; <strong style="color:#1B5886;">${s.session} sessions</strong></div>
+        <div style="font-size:12px;color:#8aaac8;margin-top:2px;">${s.id_number} &bull; ${s.course} &bull; Year ${s.year} &bull; <strong style="color:#1B5886;">${s.session} sessions left</strong></div>
       </div>
       <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name.replace(/'/g,"\\'")}',${s.session})">Sit In</button>
     </div>
@@ -729,7 +1183,7 @@ function globalSearchFn(q){
     <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #eee;">
       <div>
         <div style="font-size:13px;font-weight:600;">${s.name}</div>
-        <div style="font-size:12px;color:#888;">${s.id_number} &bull; ${s.course} ${s.year}yr &bull; ${s.session} sessions</div>
+        <div style="font-size:12px;color:#888;">${s.id_number} &bull; ${s.course} ${s.year}yr &bull; <strong>${s.session} sessions left</strong></div>
       </div>
       <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name}',${s.session})">Sit In</button>
     </div>

@@ -95,44 +95,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: admin_dashboard.php?page=students&msg=all_reset'); exit;
     }
 
-    // Sit-in — works for BOTH registered students AND walk-in (no account)
-    if (isset($_POST['do_sitin'])) {
-        $id_num  = trim($_POST['id_number'] ?? '');
-        $name    = trim($_POST['student_name'] ?? '');
-        $purpose = trim($_POST['purpose'] ?? '');
-        $lab     = trim($_POST['lab'] ?? '');
+      // Sit-in — works for BOTH registered students AND walk-in (no account)
+      if (isset($_POST['do_sitin'])) {
+          $id_num  = trim($_POST['id_number'] ?? '');
+          $name    = trim($_POST['student_name'] ?? '');
+          $purpose = trim($_POST['purpose'] ?? '');
+          $lab     = trim($_POST['lab'] ?? '');
+          $current_page = $_POST['current_page'] ?? 'home';
 
-        if (!$id_num || !$name || !$purpose || !$lab) {
-            header('Location: admin_dashboard.php?page=students&msg=sitin_err'); exit;
-        }
+          if (!$id_num || !$name || !$purpose || !$lab) {
+              header('Location: admin_dashboard.php?page=' . $current_page . '&msg=sitin_err');
+              exit;
+          }
 
-        try {
-            // Try to find a registered student by ID number
-            $stu = $pdo->prepare("SELECT * FROM students WHERE id_number = ? LIMIT 1");
-            $stu->execute([$id_num]);
-            $found = $stu->fetch();
+          try {
+              // Try to find a registered student by ID number
+              $stu = $pdo->prepare("SELECT * FROM students WHERE id_number = ? LIMIT 1");
+              $stu->execute([$id_num]);
+              $found = $stu->fetch();
 
-            if ($found) {
-                // Registered student — deduct session and log sit-in
-                $pdo->prepare("UPDATE students SET session = session - 1 WHERE id = ? AND session > 0")
-                    ->execute([$found['id']]);
-                $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date) VALUES (?,?,?,?,?,NOW(),CURDATE())")
-                    ->execute([$found['id'], $id_num, $name, $purpose, $lab]);
-            } else {
-                // Walk-in — alter table to allow NULL if needed, then insert
-                try {
-                    $pdo->exec("ALTER TABLE sit_in_history MODIFY student_id INT NULL");
-                } catch (Exception $e) { /* already nullable */ }
-                $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date) VALUES (NULL,?,?,?,?,NOW(),CURDATE())")
-                    ->execute([$id_num, $name, $purpose, $lab]);
-            }
-        } catch (PDOException $e) {
-            // Log error and still redirect
-            error_log('Sit-in error: ' . $e->getMessage());
-        }
+              if ($found) {
+                  // Get current session count BEFORE deducting (for history)
+                  $currentSession = (int)$found['session'];
+                  
+                  // Registered student — deduct session and log sit-in
+                  $pdo->prepare("UPDATE students SET session = session - 1 WHERE id = ? AND session > 0")
+                      ->execute([$found['id']]);
+                  
+                  // Insert with session_at_login = current session before deduction
+                  $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date, session_at_login) VALUES (?,?,?,?,?,NOW(),CURDATE(),?)")
+                      ->execute([$found['id'], $id_num, $name, $purpose, $lab, $currentSession]);
+              } else {
+                  // Walk-in — no session tracking
+                  try {
+                      $pdo->exec("ALTER TABLE sit_in_history MODIFY student_id INT NULL");
+                  } catch (Exception $e) { /* already nullable */ }
+                  $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, login_time, date, session_at_login) VALUES (NULL,?,?,?,?,NOW(),CURDATE(),NULL)")
+                      ->execute([$id_num, $name, $purpose, $lab]);
+              }
+          } catch (PDOException $e) {
+              error_log('Sit-in error: ' . $e->getMessage());
+          }
 
-        header('Location: admin_dashboard.php?page=students&msg=sittin'); exit;
-    }
+          header('Location: admin_dashboard.php?page=' . $current_page . '&msg=sittin');
+          exit;
+      }
 
     // Logout a sit-in record
     if (isset($_POST['logout_sitin'])) {
@@ -208,146 +215,645 @@ $flash_msg = $flash_map[$_GET['msg'] ?? ''] ?? '';
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 :root{
-  --blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;
-  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;
-  --gray-400:#8aaac8;--gray-600:#3d607f;--gray-800:#1a2e45;
-  --white:#fff;--radius:6px;
-  --shadow:0 1px 3px rgba(0,58,107,0.09);--shadow-md:0 4px 16px rgba(0,58,107,0.12);
-  --red:#dc2626;--green:#16a34a;--green-lt:#f0fdf4;
+  --blue:#1B5886;
+  --blue-dk:#003A6B;
+  --blue-lt:#e8f4fb;
+  --blue-bd:#89CFF1;
+  --gray-50:#f4f8fc;
+  --gray-100:#e8f0f7;
+  --gray-200:#cddaec;
+  --gray-400:#8aaac8;
+  --gray-600:#3d607f;
+  --gray-800:#1a2e45;
+  --white:#fff;
+  --radius:6px;
+  --shadow:0 1px 3px rgba(0,58,107,0.09);
+  --shadow-md:0 4px 16px rgba(0,58,107,0.12);
+  --red:#dc2626;
+  --green:#16a34a;
+  --green-lt:#f0fdf4;
 }
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);font-size:14px;}
+
+*{
+  box-sizing:border-box;
+  margin:0;padding:0;
+}
+
+body{
+  font-family:'Plus Jakarta Sans',sans-serif;
+  background:var(--gray-50);
+  color:var(--gray-800);
+  font-size:14px;
+}
 
 /* ── NAV ── */
-nav{background:var(--blue-dk);height:56px;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200;}
-.nav-brand{font-size:15px;font-weight:700;color:#fff;white-space:nowrap;}
-.nav-links{display:flex;align-items:center;gap:2px;flex-wrap:wrap;}
-.nav-links a{font-size:12.5px;font-weight:500;color:rgba(255,255,255,0.8);text-decoration:none;padding:5px 10px;border-radius:4px;white-space:nowrap;transition:all .15s;}
-.nav-links a:hover{color:#fff;background:rgba(255,255,255,0.12);}
-.nav-links a.active{color:#89CFF1;font-weight:600;}
-.btn-logout-nav{background:#e8b800;color:#1a1a00 !important;font-weight:700 !important;border-radius:4px;padding:5px 14px !important;margin-left:4px;}
-.btn-logout-nav:hover{background:#ffd000 !important;}
+nav{
+  background:var(--blue-dk);
+  height:56px;
+  padding:0 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  position:sticky;
+  top:0;z-index:200;
+}
+
+.nav-brand{
+  font-size:15px;
+  font-weight:700;
+  color:#fff;white-space:nowrap;
+}
+.nav-links{
+  display:flex;
+  align-items:center;
+  gap:2px;
+  flex-wrap:wrap;
+}
+
+.nav-links a{
+  font-size:12.5px;
+  font-weight:500;
+  color:rgba(255,255,255,0.8);
+  text-decoration:none;
+  padding:5px 10px;
+  border-radius:4px;
+  white-space:nowrap;
+  transition:all .15s;
+}
+
+.nav-links a:hover{
+  color:#fff;
+  background:rgba(255,255,255,0.12);
+}
+
+.nav-links a.active{
+  color:#89CFF1;
+  font-weight:600;
+}
+
+.btn-logout-nav{
+  background:#e8b800;
+  color:#1a1a00 !important;
+  font-weight:700 !important;
+  border-radius:4px;
+  padding:5px 14px !important;
+  margin-left:4px;
+}
+
+.btn-logout-nav:hover{
+  background:#ffd000 !important;
+}
 
 /* ── FLASH ── */
-.flash{background:var(--green-lt);border:1px solid #bbf7d0;color:var(--green);padding:9px 16px;border-radius:var(--radius);font-size:13px;margin-bottom:18px;font-weight:500;}
+.flash{background:var(--green-lt);
+border:1px solid #bbf7d0;
+color:var(--green);
+padding:9px 16px;
+border-radius:var(--radius);
+font-size:13px;
+margin-bottom:18px;
+font-weight:500;
+}
 
 /* ── PAGE BODY ── */
-.page-body{max-width:1280px;margin:0 auto;padding:22px 20px 60px;}
-.page-section{display:none;}
-.page-section.active{display:block;}
-.page-title{font-size:20px;font-weight:700;color:var(--blue-dk);margin-bottom:20px;text-align:center;}
+.page-body{
+  max-width:1280px;
+  margin:0 auto;
+  padding:22px 20px 60px;
+}
+
+.page-section{
+  display:none;
+}
+
+.page-section.active{
+  display:block;
+}
+.page-title{
+  font-size:20px;
+  font-weight:700;
+  color:var(--blue-dk);
+  margin-bottom:20px;
+  text-align:center;
+}
 
 /* ── HOME: two-column grid ── */
-.home-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+.home-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;gap:20px;
+}
 
 /* ── CARD ── */
-.card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;margin-bottom:20px;}
-.card-head{background:var(--blue);padding:10px 16px;display:flex;align-items:center;justify-content:space-between;}
-.card-head h2{color:#fff;font-size:13px;font-weight:600;}
-.card-body{padding:16px;}
+.card{
+  background:var(--white);
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  box-shadow:var(--shadow);
+  overflow:hidden;
+  margin-bottom:20px;
+}
+
+.card-head{
+  background:var(--blue);
+  padding:10px 16px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+
+.card-head h2{
+  color:#fff;
+  font-size:13px;
+  font-weight:600;
+}
+
+.card-body{
+  padding:16px;
+}
 
 /* ── STATS ── */
-.stat-row{display:flex;flex-direction:column;gap:0;padding:0;}
-.stat-item{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--gray-100);}
-.stat-item:last-child{border-bottom:none;}
-.stat-icon-box{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.stat-icon-box svg{width:18px;height:18px;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.stat-icon-blue{background:#e8f4fb;border:1px solid #89CFF1;}
-.stat-icon-blue svg{stroke:#1B5886;}
-.stat-icon-green{background:#f0fdf4;border:1px solid #86efac;}
-.stat-icon-green svg{stroke:#16a34a;}
-.stat-icon-orange{background:#fff7ed;border:1px solid #fed7aa;}
-.stat-icon-orange svg{stroke:#ea580c;}
-.stat-text{flex:1;}
-.stat-label{font-size:12px;color:var(--gray-400);font-weight:500;}
-.stat-value{font-size:22px;font-weight:800;color:var(--blue-dk);line-height:1.1;letter-spacing:-0.02em;}
+.stat-row{
+  display:flex;
+  flex-direction:column;
+  gap:0;padding:0;
+}
+
+.stat-item{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  padding:12px 16px;
+  border-bottom:1px solid var(--gray-100);
+}
+
+.stat-item:last-child{
+  border-bottom:none;
+}
+
+.stat-icon-box{
+  width:36px;
+  height:36px;
+  border-radius:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  flex-shrink:0;
+}
+
+.stat-icon-box svg{
+  width:18px;
+  height:18px;
+  fill:none;
+  stroke-width:2;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+
+.stat-icon-blue{
+  background:#e8f4fb;
+  border:1px solid #89CFF1;
+}
+
+.stat-icon-blue svg{
+  stroke:#1B5886;
+}
+
+.stat-icon-green{
+  background:#f0fdf4;
+  border:1px solid #86efac;
+}
+
+.stat-icon-green svg{
+  stroke:#16a34a;
+}
+
+.stat-icon-orange{
+  background:#fff7ed;
+  border:1px solid #fed7aa;
+}
+
+.stat-icon-orange svg{
+  stroke:#ea580c;
+}
+
+.stat-text{
+  flex:1;
+}
+
+.stat-label{
+  font-size:12px;
+  color:var(--gray-400);
+  font-weight:500;
+}
+
+.stat-value{
+  font-size:22px;
+  font-weight:800;
+  color:var(--blue-dk);
+  line-height:1.1;
+  letter-spacing:-0.02em;
+}
 
 /* ── PIE CHART ── */
-.chart-wrap{padding:12px 16px 16px;display:flex;justify-content:center;}
-.chart-wrap canvas{max-width:280px;}
+.chart-wrap{
+  padding:12px 16px 16px;
+  display:flex;
+  justify-content:center;
+}
+
+.chart-wrap canvas{
+  max-width:280px;
+}
 
 /* ── ANNOUNCE FORM ── */
-.ann-form{padding:14px 16px;}
-.ann-form textarea{width:100%;padding:9px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-family:'Inter',sans-serif;font-size:13px;resize:vertical;min-height:80px;outline:none;transition:border-color .15s;}
-.ann-form textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.10);}
-.btn-submit{padding:7px 20px;border:none;border-radius:var(--radius);background:#16a34a;color:#fff;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;margin-top:8px;transition:background .15s;}
-.btn-submit:hover{background:#15803d;}
+.ann-form{
+  padding:14px 16px;
+}
+
+.ann-form textarea{
+  width:100%;
+  padding:9px 11px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-family:'Inter',sans-serif;
+  font-size:13px;
+  resize:vertical;
+  min-height:80px;
+  outline:none;
+  transition:border-color .15s;
+}
+
+.ann-form textarea:focus{
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(27,88,134,0.10);
+}
+
+.btn-submit{
+  padding:7px 20px;
+  border:none;
+  border-radius:var(--radius);
+  background:#16a34a;
+  color:#fff;
+  font-size:13px;
+  font-weight:600;
+  font-family:'Inter',sans-serif;
+  cursor:pointer;
+  margin-top:8px;
+  transition:background .15s;
+}
+
+.btn-submit:hover{
+  background:#15803d;
+}
 
 /* ── ANN LIST ── */
-.ann-posted-title{font-size:16px;font-weight:700;padding:12px 16px 4px;}
-.ann-item{padding:10px 16px;border-top:1px solid var(--gray-100);}
-.ann-meta{font-size:12.5px;font-weight:600;color:var(--blue-dk);margin-bottom:4px;}
-.ann-content{font-size:13px;color:var(--gray-600);}
-.ann-del{float:right;}
+.ann-posted-title{
+  font-size:16px;
+  font-weight:700;
+  padding:12px 16px 4px;
+}
+
+.ann-item{
+  padding:10px 16px;
+  border-top:1px solid var(--gray-100);
+}
+
+.ann-meta{
+  font-size:12.5px;
+  font-weight:600;
+  color:var(--blue-dk);
+  margin-bottom:4px;
+}
+
+.ann-content{
+  font-size:13px;
+  color:var(--gray-600);
+}
+
+.ann-del{
+  float:right;
+}
 
 /* ── TABLE ── */
-.table-wrap{overflow-x:auto;}
-table{width:100%;border-collapse:collapse;}
-thead th{background:var(--gray-50);color:var(--gray-600);font-size:11.5px;font-weight:700;padding:9px 12px;text-align:left;border-bottom:2px solid var(--gray-200);white-space:nowrap;letter-spacing:0.03em;}
-tbody tr{border-bottom:1px solid var(--gray-100);transition:background .1s;}
-tbody tr:hover{background:var(--gray-50);}
-tbody td{padding:9px 12px;font-size:13px;color:var(--gray-600);}
-.no-data{text-align:center;padding:28px;color:var(--gray-400);font-size:13px;font-style:italic;}
+.table-wrap{
+  overflow-x:auto;
+}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+thead th{
+  background:var(--gray-50);
+  color:var(--gray-600);
+  font-size:11.5px;
+  font-weight:700;
+  padding:9px 12px;
+  text-align:left;
+  border-bottom:2px solid var(--gray-200);
+  white-space:nowrap;
+  letter-spacing:0.03em;
+}
+
+tbody tr{
+  border-bottom:1px solid var(--gray-100);
+  transition:background .1s;
+}
+
+tbody tr:hover{
+  background:var(--gray-50);
+}
+
+tbody td{
+  padding:9px 12px;
+  font-size:13px;
+  color:var(--gray-600);
+}
+
+.no-data{
+  text-align:center;
+  padding:28px;
+  color:var(--gray-400);
+  font-size:13px;
+  font-style:italic;
+}
 
 /* Sortable header arrow */
-thead th.sortable{cursor:pointer;user-select:none;}
-thead th.sortable::after{content:' ⇅';font-size:10px;opacity:0.5;}
+thead th.sortable{
+  cursor:pointer;
+  user-select:none;
+}
+
+thead th.sortable::after{
+  content:' ⇅';
+  font-size:10px;
+  opacity:0.5;
+}
 
 /* ── TOOLBAR ── */
-.toolbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
-.toolbar-right{margin-left:auto;display:flex;align-items:center;gap:8px;}
-.entries-select{padding:5px 8px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:'Inter',sans-serif;}
-.search-input{padding:6px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:'Inter',sans-serif;width:180px;outline:none;}
-.search-input:focus{border-color:var(--blue);}
+.toolbar{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-bottom:14px;
+  flex-wrap:wrap;
+}
+
+.toolbar-right{
+  margin-left:auto;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.entries-select{
+  padding:5px 8px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-family:'Inter',sans-serif;
+}
+
+.search-input{
+  padding:6px 11px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-family:'Inter',sans-serif;
+  width:180px;
+  outline:none;
+}
+
+.search-input:focus{
+  border-color:var(--blue);
+}
 
 /* ── BUTTONS ── */
-.btn{padding:7px 16px;border:none;border-radius:var(--radius);font-size:13px;font-weight:600;font-family:'Inter',sans-serif;cursor:pointer;transition:all .15s;text-decoration:none;display:inline-flex;align-items:center;gap:5px;}
-.btn-blue{background:#1976d2;color:#fff;}
-.btn-blue:hover{background:#1558a0;}
-.btn-red{background:var(--red);color:#fff;}
-.btn-red:hover{background:#b91c1c;}
-.btn-green{background:#16a34a;color:#fff;}
-.btn-green:hover{background:#15803d;}
-.btn-sm{padding:4px 11px;font-size:12px;}
+.btn{
+  padding:7px 16px;
+  border:none;
+  border-radius:var(--radius);
+  font-size:13px;
+  font-weight:600;
+  font-family:'Inter',sans-serif;
+  cursor:pointer;
+  transition:all .15s;
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+}
+
+.btn-blue{
+  background:#1976d2;
+  color:#fff;
+}
+
+.btn-blue:hover{
+  background:#1558a0;
+}
+
+.btn-red{
+  background:var(--red);
+  color:#fff;
+}
+
+.btn-red:hover{
+  background:#b91c1c;
+}
+
+.btn-green{
+  background:#16a34a;
+  color:#fff;
+}
+
+.btn-green:hover{
+  background:#15803d;
+}
+
+.btn-sm{
+  padding:4px 11px;
+  font-size:12px;
+}
 
 /* ── MODAL ── */
-.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:500;align-items:center;justify-content:center;}
-.modal-overlay.open{display:flex;}
-.modal{background:var(--white);border-radius:8px;box-shadow:var(--shadow-md);width:100%;max-width:480px;padding:0;overflow:hidden;}
-.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--gray-200);}
-.modal-head h3{font-size:15px;font-weight:700;color:var(--gray-800);}
-.modal-close{background:none;border:none;font-size:20px;cursor:pointer;color:var(--gray-400);line-height:1;padding:0 4px;}
-.modal-close:hover{color:var(--gray-800);}
-.modal-body{padding:20px;}
-.modal-footer{padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;justify-content:flex-end;gap:8px;}
+.modal-overlay{
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,0.45);
+  z-index:500;
+  align-items:center;
+  justify-content:center;
+}
+
+.modal-overlay.open{
+  display:flex;
+}
+
+.modal{
+  background:var(--white);
+  border-radius:8px;
+  box-shadow:var(--shadow-md);
+  width:100%;
+  max-width:480px;
+  padding:0;
+  overflow:hidden;
+}
+
+.modal-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:14px 20px;
+  border-bottom:1px solid var(--gray-200);
+}
+
+.modal-head h3{
+  font-size:15px;
+  font-weight:700;
+  color:var(--gray-800);
+}
+
+.modal-close{
+  background:none;
+  border:none;
+  font-size:20px;
+  cursor:pointer;
+  color:var(--gray-400);
+  line-height:1;
+  padding:0 4px;
+}
+
+.modal-close:hover{
+  color:var(--gray-800);
+}
+
+.modal-body{
+  padding:20px;
+}
+
+.modal-footer{
+  padding:12px 20px;
+  border-top:1px solid var(--gray-100);
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+}
 
 /* ── FORM FIELDS ── */
-.field{margin-bottom:14px;}
-.field label{display:block;font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:5px;}
-.field input,.field select{width:100%;padding:9px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-size:13px;font-family:'Inter',sans-serif;color:var(--gray-800);outline:none;transition:border-color .15s;}
-.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.10);}
-.field input[readonly]{background:var(--gray-50);color:var(--gray-400);}
-.field-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+.field{
+  margin-bottom:14px;
+}
+
+.field label{
+  display:block;
+  font-size:12px;
+  font-weight:600;
+  color:var(--gray-600);
+  margin-bottom:5px;
+}
+
+.field input,.field select{
+  width:100%;
+  padding:9px 11px;
+  border:1px solid var(--gray-200);
+  border-radius:var(--radius);
+  font-size:13px;
+  font-family:'Inter',sans-serif;
+  color:var(--gray-800);
+  outline:none;
+  transition:border-color .15s;
+}
+
+.field input:focus,.field select:focus{
+  border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(27,88,134,0.10);
+}
+
+.field input[readonly]{
+  background:var(--gray-50);
+  color:var(--gray-400);
+}
+
+.field-row{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+}
 
 /* ── STATUS BADGE ── */
-.badge{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
-.badge-pending{background:#fef9c3;color:#854d0e;}
-.badge-approved{background:#dcfce7;color:#15803d;}
-.badge-rejected{background:#fee2e2;color:var(--red);}
+.badge{
+  display:inline-block;
+  padding:2px 9px;
+  border-radius:20px;
+  font-size:11.5px;
+  font-weight:600;
+}
+
+.badge-pending{
+  background:#fef9c3;
+  color:#854d0e;
+}
+
+.badge-approved{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.badge-rejected{
+  background:#fee2e2;
+  color:var(--red);
+}
 
 /* ── PAGINATION ── */
 .page-btn{
-  width:30px;height:30px;border-radius:6px;
-  border:1.5px solid var(--gray-200);background:var(--white);
-  font-size:13px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--gray-600);
-  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;
-  transition:all .15s;flex-shrink:0;
+  width:30px;
+  height:30px;
+  border-radius:6px;
+  border:1.5px solid var(--gray-200);
+  background:var(--white);
+  font-size:13px;
+  font-family:'Plus Jakarta Sans',sans-serif;
+  color:var(--gray-600);
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  transition:all .15s;
+  flex-shrink:0;
 }
-.page-btn:hover{border-color:var(--blue);color:var(--blue);}
-.page-btn.active{background:var(--blue);border-color:var(--blue);color:#fff;font-weight:700;}
 
-@media(max-width:900px){.home-grid{grid-template-columns:1fr;}}
-@media(max-width:640px){nav{padding:0 12px;}.nav-brand{font-size:13px;}.nav-links a{padding:4px 7px;font-size:11.5px;}}
+.page-btn:hover{
+  border-color:var(--blue);
+  color:var(--blue);
+}
+
+.page-btn.active{
+  background:var(--blue);
+  border-color:var(--blue);
+  color:#fff;
+  font-weight:700;
+}
+
+@media(max-width:900px){
+  .home-grid{
+    grid-template-columns:1fr;
+  }}
+
+@media(max-width:640px){
+  nav{
+    padding:0 12px;
+  }
+  .nav-brand{
+    font-size:13px;
+  }
+  .nav-links a{
+    padding:4px 7px;
+    font-size:11.5px;
+  }}
+  
 </style>
 </head>
 <body>
