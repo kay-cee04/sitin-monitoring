@@ -4,6 +4,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
     header('Location: login.php'); exit;
 }
 require_once 'db.php';
+$CURRENT_PAGE = 'profile';
 
 $student_id = (int)$_SESSION['student_id'];
 
@@ -318,6 +319,17 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
   .notif-title{font-size:13px;}
   .notif-desc{font-size:12px;}
 }
+
+.btn-dark-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
+.btn-dark-toggle:hover{background:rgba(255,255,255,0.2);color:#fff;}
+body.dark-mode{background:#0f172a;color:#e2e8f0;}
+body.dark-mode nav{background:#020617;}
+body.dark-mode .card{background:#1e293b;border-color:#334155;}
+body.dark-mode .card-head{background:#1B5886;}
+body.dark-mode table thead tr{background:#1B5886;}
+body.dark-mode tbody td{color:#cbd5e1;}
+body.dark-mode tbody tr{border-color:#334155;}
+body.dark-mode tbody tr:hover{background:#273549;}
 </style>
 </head>
 <body>
@@ -394,6 +406,9 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
     <a href="profile.php" class="active">Edit Profile</a>
     <a href="history.php">History</a>
     <a href="feedback.php">Feedback</a>
+    <a href="reservation.php">Reservation</a>
+    <a href="software.php">Lab Software</a>
+    <button onclick="toggleDarkMode()" class="btn-dark-toggle" id="darkToggle" title="Toggle dark mode"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <a href="logout.php" class="btn-logout">Log out</a>
   </div>
 </nav>
@@ -687,6 +702,22 @@ var zone = document.getElementById('uploadZone');
 zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.borderColor='var(--blue)'; zone.style.background='var(--blue-lt)'; });
 zone.addEventListener('dragleave', function() { zone.style.borderColor=''; zone.style.background=''; });
 zone.addEventListener('drop', function() { zone.style.borderColor=''; zone.style.background=''; });
+
+// ── Dark Mode ──────────────────────────────────────────────────
+var SUN_SVG2  = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+var MOON_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+function applyDarkMode(on) {
+  document.body.classList.toggle('dark-mode', on);
+  var btn = document.getElementById('darkToggle');
+  if (btn) btn.innerHTML = on ? SUN_SVG2 : MOON_SVG2;
+}
+function toggleDarkMode() {
+  var on = !document.body.classList.contains('dark-mode');
+  localStorage.setItem('darkMode', on ? '1' : '0');
+  applyDarkMode(on);
+}
+if (localStorage.getItem('darkMode') === '1') applyDarkMode(true);
+
 </script>
 </body>
 </html>

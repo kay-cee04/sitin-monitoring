@@ -95,7 +95,81 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: admin_dashboard.php?page=students&msg=all_reset'); exit;
     }
 
-      // Sit-in — works for BOTH registered students AND walk-in (no account)
+      // ── Export Reports ──────────────────────────────────────────
+    if (isset($_POST['export_report'])) {
+        $format   = $_POST['export_format'] ?? 'csv';
+        $from     = trim($_POST['report_from'] ?? '');
+        $to       = trim($_POST['report_to']   ?? '');
+        $params   = [];
+        $where    = "WHERE 1=1";
+        if ($from) { $where .= " AND date >= ?"; $params[] = $from; }
+        if ($to)   { $where .= " AND date <= ?"; $params[] = $to; }
+        $stmt = $pdo->prepare("SELECT id_number, fullname, sit_purpose, laboratory, login_time, logout_time, date FROM sit_in_history $where ORDER BY date DESC, login_time DESC");
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll();
+        if ($format === 'csv') {
+            header('Content-Type: text/csv');
+            header('Content-Disposition: attachment; filename="sitin_report_'.date('Ymd').'.csv"');
+            $out = fopen('php://output','w');
+            fputcsv($out, ['ID Number','Full Name','Purpose','Laboratory','Time In','Time Out','Date']);
+            foreach ($rows as $r) {
+                fputcsv($out, [$r['id_number'],$r['fullname'],$r['sit_purpose'],$r['laboratory'],$r['login_time'],$r['logout_time'],$r['date']]);
+            }
+            fclose($out); exit;
+        } else { // PDF via HTML print
+            header('Content-Type: text/html');
+            echo '<!DOCTYPE html><html><head><title>Sit-in Report</title>';
+            echo '<style>body{font-family:Arial,sans-serif;font-size:12px;padding:20px;}h2{color:#003A6B;margin-bottom:4px;}p{color:#666;margin-bottom:16px;}table{width:100%;border-collapse:collapse;}th{background:#003A6B;color:#fff;padding:7px 10px;text-align:left;font-size:11px;}td{padding:6px 10px;border-bottom:1px solid #eee;}</style>';
+            echo '</head><body onload="window.print()">';
+            echo '<h2>CCS Sit-in Report</h2>';
+            echo '<p>Generated: '.date('F j, Y g:i A').($from ? ' | From: '.$from : '').($to ? ' To: '.$to : '').'</p>';
+            echo '<table><thead><tr><th>ID Number</th><th>Full Name</th><th>Purpose</th><th>Lab</th><th>Time In</th><th>Time Out</th><th>Date</th></tr></thead><tbody>';
+            foreach ($rows as $r) {
+                echo '<tr><td>'.htmlspecialchars($r['id_number']).'</td><td>'.htmlspecialchars($r['fullname']).'</td><td>'.htmlspecialchars($r['sit_purpose']).'</td><td>'.htmlspecialchars($r['laboratory']).'</td><td>'.htmlspecialchars($r['login_time']).'</td><td>'.htmlspecialchars($r['logout_time'] ?? '—').'</td><td>'.htmlspecialchars($r['date']).'</td></tr>';
+            }
+            echo '</tbody></table></body></html>'; exit;
+        }
+    }
+
+    // ── Reservation approve/reject ──────────────────────────────
+    if (isset($_POST['approve_reservation'])) {
+        $pdo->prepare("UPDATE reservations SET status='approved' WHERE id=?")->execute([(int)$_POST['reservation_id']]);
+        header('Location: admin_dashboard.php?page=reservation&msg=approved'); exit;
+    }
+    if (isset($_POST['reject_reservation'])) {
+        $pdo->prepare("UPDATE reservations SET status='rejected' WHERE id=?")->execute([(int)$_POST['reservation_id']]);
+        header('Location: admin_dashboard.php?page=reservation&msg=rejected'); exit;
+    }
+
+    // ── Toggle Reservations open/closed ────────────────────────
+    if (isset($_POST['toggle_reservations'])) {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS system_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value VARCHAR(255) NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+        } catch(Exception $e){}
+        $cur = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key='reservations_open'")->fetchColumn();
+        $newVal = ($cur === '1' || $cur === false) ? '0' : '1';
+        $pdo->prepare("INSERT INTO system_settings (setting_key,setting_value) VALUES ('reservations_open',?) ON DUPLICATE KEY UPDATE setting_value=?")->execute([$newVal,$newVal]);
+        header('Location: admin_dashboard.php?page=reservation&msg=toggled'); exit;
+    }
+
+    // ── Software upload ─────────────────────────────────────────
+    if (isset($_POST['add_software'])) {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS lab_software (id INT AUTO_INCREMENT PRIMARY KEY, lab_name VARCHAR(100) NOT NULL, software VARCHAR(255) NOT NULL, category VARCHAR(100) DEFAULT 'General', is_available TINYINT(1) DEFAULT 1, added_by VARCHAR(100) DEFAULT 'Admin', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+        } catch(Exception $e){}
+        $lab  = trim($_POST['sw_lab'] ?? '');
+        $sw   = trim($_POST['sw_name'] ?? '');
+        $cat  = trim($_POST['sw_category'] ?? 'General');
+        if ($lab && $sw) {
+            $pdo->prepare("INSERT INTO lab_software (lab_name, software, category, added_by) VALUES (?,?,?,?)")
+                ->execute([$lab, $sw, $cat, $_SESSION['admin_username']]);
+        }
+        header('Location: admin_dashboard.php?page=software&msg=sw_added'); exit;
+    }
+    if (isset($_POST['delete_software'])) {
+        $pdo->prepare("DELETE FROM lab_software WHERE id=?")->execute([(int)$_POST['sw_id']]);
+        header('Location: admin_dashboard.php?page=software&msg=sw_deleted'); exit;
+    }
       if (isset($_POST['do_sitin'])) {
           $id_num  = trim($_POST['id_number'] ?? '');
           $name    = trim($_POST['student_name'] ?? '');
@@ -202,7 +276,35 @@ $flash_map = [
     'sitin_err'  => '❌ Please fill in all required fields (ID, Name, Purpose, Lab).',
     'session_updated' => '✅ Session updated successfully.',
     'history_edited'  => '✅ Sit-in record updated successfully.',
+    'approved'   => '✅ Reservation approved.',
+    'rejected'   => '✅ Reservation rejected.',
+    'toggled'    => '✅ Reservation setting updated.',
+    'sw_added'   => '✅ Software added.',
+    'sw_deleted' => '✅ Software removed.',
 ];
+
+// ── Fetch Software ────────────────────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS lab_software (id INT AUTO_INCREMENT PRIMARY KEY, lab_name VARCHAR(100) NOT NULL, software VARCHAR(255) NOT NULL, category VARCHAR(100) DEFAULT 'General', is_available TINYINT(1) DEFAULT 1, added_by VARCHAR(100) DEFAULT 'Admin', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)");
+    $software_list = $pdo->query("SELECT * FROM lab_software ORDER BY lab_name, category, software")->fetchAll();
+} catch(Exception $e) { $software_list = []; }
+
+// ── Reservation toggle status ─────────────────────────────────
+try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS system_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value VARCHAR(255) NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+    $resvOpen = $pdo->query("SELECT setting_value FROM system_settings WHERE setting_key='reservations_open'")->fetchColumn();
+    $reservations_open = ($resvOpen === false) ? true : ($resvOpen === '1');
+} catch(Exception $e) { $reservations_open = true; }
+
+// ── Testimonials ──────────────────────────────────────────────
+try {
+    $testimonials_admin = $pdo->query("SELECT * FROM testimonials ORDER BY created_at DESC")->fetchAll();
+} catch(Exception $e) { $testimonials_admin = []; }
+
+// ── Analytics: daily sit-in last 7 days ──────────────────────
+try {
+    $daily_stats = $pdo->query("SELECT date, COUNT(*) as cnt FROM sit_in_history WHERE date >= DATE_SUB(CURDATE(), INTERVAL 6 DAY) GROUP BY date ORDER BY date ASC")->fetchAll();
+} catch(Exception $e) { $daily_stats = []; }
 $flash_msg = $flash_map[$_GET['msg'] ?? ''] ?? '';
 ?>
 <!DOCTYPE html>
@@ -862,15 +964,17 @@ thead th.sortable::after{
 <nav>
   <div class="nav-brand">College of Computer Studies Admin</div>
   <div class="nav-links">
-    <a href="?page=home"        class="<?= $page==='home'        ?'active':'' ?>">Home</a>
-    <a href="#"                 onclick="openModal('searchModal');return false;">Search</a>
-    <a href="?page=students"    class="<?= $page==='students'    ?'active':'' ?>">Students</a>
+    <a href="?page=home"         class="<?= $page==='home'        ?'active':'' ?>">Home</a>
+    <a href="#"                  onclick="openModal('searchModal');return false;">Search</a>
+    <a href="?page=students"     class="<?= $page==='students'    ?'active':'' ?>">Students</a>
     <a href="#" class="<?= $page==='sitin' ? 'active' : '' ?>" onclick="openBlankSitin(); return false;">Sit-in</a>
-    <a href="admin_sitin_history.php"     class="">View Sit-in History</a>
-    <a href="?page=reports"     class="<?= $page==='reports'     ?'active':'' ?>">Sit-in Reports</a>
-    <a href="?page=feedback"    class="<?= $page==='feedback'    ?'active':'' ?>">Feedback Reports</a>
-    <a href="?page=reservation" class="<?= $page==='reservation' ?'active':'' ?>">Reservation</a>
-    <a href="admin_logout.php"  class="btn-logout-nav">Log out</a>
+    <a href="admin_sitin_history.php">View History</a>
+    <a href="?page=reports"      class="<?= $page==='reports'     ?'active':'' ?>">Reports</a>
+    <a href="?page=analytics"    class="<?= $page==='analytics'   ?'active':'' ?>">Analytics</a>
+    <a href="?page=software"     class="<?= $page==='software'    ?'active':'' ?>">Lab Software</a>
+    <a href="?page=testimonials" class="<?= $page==='testimonials' ?'active':'' ?>">Testimonials</a>
+    <a href="?page=reservation"  class="<?= $page==='reservation' ?'active':'' ?>">Reservation</a>
+    <a href="admin_logout.php"   class="btn-logout-nav">Log out</a>
   </div>
 </nav>
 
@@ -1196,6 +1300,31 @@ thead th.sortable::after{
 <!-- ════════════ REPORTS ════════════ -->
 <div id="page-reports" class="page-section <?= $page==='reports'?'active':'' ?>">
   <div class="page-title">Sit-in Reports</div>
+
+  <!-- Export toolbar -->
+  <div class="card" style="margin-bottom:18px;">
+    <div class="card-head"><h2>Export Report</h2></div>
+    <div class="card-body">
+      <form method="POST" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+        <div class="field" style="margin:0;">
+          <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px;">From Date</label>
+          <input type="date" name="report_from" style="padding:7px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-family:inherit;font-size:13px;"/>
+        </div>
+        <div class="field" style="margin:0;">
+          <label style="font-size:12px;font-weight:600;color:var(--gray-600);display:block;margin-bottom:4px;">To Date</label>
+          <input type="date" name="report_to" style="padding:7px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-family:inherit;font-size:13px;"/>
+        </div>
+        <button type="submit" name="export_report" value="1" onclick="document.querySelector('[name=export_format]').value='csv'" class="btn btn-green">
+          ⬇ Export CSV
+        </button>
+        <button type="submit" name="export_report" value="1" onclick="document.querySelector('[name=export_format]').value='pdf';this.form.target='_blank';" class="btn btn-blue">
+          🖨 Print PDF
+        </button>
+        <input type="hidden" name="export_format" value="csv"/>
+      </form>
+    </div>
+  </div>
+
   <div class="home-grid">
     <div class="card">
       <div class="card-head"><h2>Purpose Breakdown</h2></div>
@@ -1208,10 +1337,7 @@ thead th.sortable::after{
           <thead><tr><th>Purpose</th><th>Count</th></tr></thead>
           <tbody>
             <?php foreach ($purpose_rows as $p): ?>
-            <tr>
-              <td><?= htmlspecialchars($p['sit_purpose']) ?></td>
-              <td><?= $p['cnt'] ?></td>
-            </tr>
+            <tr><td><?= htmlspecialchars($p['sit_purpose']) ?></td><td><?= $p['cnt'] ?></td></tr>
             <?php endforeach; ?>
             <?php if (!$purpose_rows): ?>
             <tr><td colspan="2" class="no-data">No data yet.</td></tr>
@@ -1223,18 +1349,164 @@ thead th.sortable::after{
   </div>
 </div>
 
-<!-- ════════════ FEEDBACK ════════════ -->
-<div id="page-feedback" class="page-section <?= $page==='feedback'?'active':'' ?>">
-  <div class="page-title">Feedback Reports</div>
-  <div class="card">
-    <div class="card-body" style="color:var(--gray-400);font-size:13px;text-align:center;padding:40px;">No feedback data available yet.</div>
+<!-- ════════════ ANALYTICS ════════════ -->
+<div id="page-analytics" class="page-section <?= $page==='analytics'?'active':'' ?>">
+  <div class="page-title">Analytics</div>
+  <div class="home-grid">
+    <div class="card">
+      <div class="card-head"><h2>Daily Sit-ins (Last 7 Days)</h2></div>
+      <div class="chart-wrap"><canvas id="analyticsBarChart" style="max-width:400px;max-height:250px;"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Purpose Breakdown</h2></div>
+      <div class="chart-wrap"><canvas id="analyticsPieChart" style="max-width:280px;"></canvas></div>
+    </div>
+  </div>
+  <div class="home-grid">
+    <div class="card">
+      <div class="card-head"><h2>Top Labs by Usage</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Laboratory</th><th>Total Sessions</th></tr></thead>
+          <tbody>
+            <?php
+            try {
+              $lab_stats = $pdo->query("SELECT laboratory, COUNT(*) as cnt FROM sit_in_history GROUP BY laboratory ORDER BY cnt DESC LIMIT 10")->fetchAll();
+              foreach ($lab_stats as $ls): ?>
+              <tr><td><?= htmlspecialchars($ls['laboratory']) ?></td><td><?= $ls['cnt'] ?></td></tr>
+            <?php endforeach;
+            if (!$lab_stats): ?><tr><td colspan="2" class="no-data">No data yet.</td></tr><?php endif;
+            } catch(Exception $e) {}
+            ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Overview</h2></div>
+      <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+        <?php
+        $avg_session = $pdo->query("SELECT AVG(TIMESTAMPDIFF(MINUTE, login_time, logout_time)) FROM sit_in_history WHERE logout_time IS NOT NULL")->fetchColumn();
+        $avg_m = $avg_session ? round($avg_session) : 0;
+        $avg_display = ($avg_m >= 60) ? floor($avg_m/60).'h '.($avg_m%60).'m' : $avg_m.'m';
+        ?>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--gray-100);padding-bottom:10px;"><span style="font-size:13px;color:var(--gray-600);">Total Registered Students</span><strong><?= $total_students ?></strong></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--gray-100);padding-bottom:10px;"><span style="font-size:13px;color:var(--gray-600);">Total Sit-in Records</span><strong><?= $total_sitin ?></strong></div>
+        <div style="display:flex;justify-content:space-between;border-bottom:1px solid var(--gray-100);padding-bottom:10px;"><span style="font-size:13px;color:var(--gray-600);">Currently Sitting In</span><strong style="color:#16a34a;"><?= $currently_sitin ?></strong></div>
+        <div style="display:flex;justify-content:space-between;"><span style="font-size:13px;color:var(--gray-600);">Avg. Session Duration</span><strong><?= $avg_display ?></strong></div>
+      </div>
+    </div>
   </div>
 </div>
 
-<!-- ════════════ RESERVATION ════════════  -->
+<!-- ════════════ LAB SOFTWARE ════════════ -->
+<div id="page-software" class="page-section <?= $page==='software'?'active':'' ?>">
+  <div class="page-title">Lab Software Management</div>
+  <div class="home-grid">
+    <div class="card">
+      <div class="card-head"><h2>Add Software</h2></div>
+      <div class="card-body">
+        <form method="POST">
+          <div class="field">
+            <label>Laboratory</label>
+            <select name="sw_lab" required style="width:100%;padding:8px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-family:inherit;font-size:13px;">
+              <option value="">— Select Lab —</option>
+              <?php foreach (['Lab 517','Lab 524','Lab 526','Lab 528','Lab 530','Lab 542','Lab 544'] as $l): ?>
+              <option value="<?= $l ?>"><?= $l ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field">
+            <label>Software Name</label>
+            <input type="text" name="sw_name" placeholder="e.g. Microsoft Visual Studio" required/>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select name="sw_category" style="width:100%;padding:8px 11px;border:1px solid var(--gray-200);border-radius:var(--radius);font-family:inherit;font-size:13px;">
+              <option value="General">General</option>
+              <option value="Programming IDE">Programming IDE</option>
+              <option value="Office">Office</option>
+              <option value="Graphics & Design">Graphics & Design</option>
+              <option value="Database">Database</option>
+              <option value="Networking">Networking</option>
+              <option value="Security">Security</option>
+              <option value="Multimedia">Multimedia</option>
+            </select>
+          </div>
+          <button type="submit" name="add_software" class="btn btn-blue" style="width:100%;">Add Software</button>
+        </form>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Installed Software List</h2></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Lab</th><th>Category</th><th>Software</th><th>Action</th></tr></thead>
+          <tbody>
+            <?php if ($software_list): foreach ($software_list as $sw): ?>
+            <tr>
+              <td><?= htmlspecialchars($sw['lab_name']) ?></td>
+              <td style="color:var(--blue);font-size:12px;font-weight:600;"><?= htmlspecialchars($sw['category']) ?></td>
+              <td><?= htmlspecialchars($sw['software']) ?></td>
+              <td>
+                <form method="POST" style="display:inline;">
+                  <input type="hidden" name="sw_id" value="<?= $sw['id'] ?>"/>
+                  <button type="submit" name="delete_software" class="btn btn-red btn-sm" onclick="return confirm('Remove this software?')">✕</button>
+                </form>
+              </td>
+            </tr>
+            <?php endforeach; else: ?>
+            <tr><td colspan="4" class="no-data">No software added yet.</td></tr>
+            <?php endif; ?>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ TESTIMONIALS ════════════ -->
+<div id="page-testimonials" class="page-section <?= $page==='testimonials'?'active':'' ?>">
+  <div class="page-title">Student Testimonials</div>
+  <?php
+  try { $testimonials_admin = $pdo->query("SELECT * FROM testimonials ORDER BY created_at DESC")->fetchAll(); }
+  catch(Exception $e) { $testimonials_admin = []; }
+  ?>
+  <div class="card">
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Student</th><th>Course</th><th>Rating</th><th>Message</th><th>Date</th></tr></thead>
+        <tbody>
+          <?php if ($testimonials_admin): $i=0; foreach ($testimonials_admin as $t): $i++; ?>
+          <tr>
+            <td><?= $i ?></td>
+            <td style="font-weight:600;"><?= htmlspecialchars($t['fullname']) ?></td>
+            <td><?= htmlspecialchars($t['course']) ?></td>
+            <td style="color:#f59e0b;"><?= str_repeat('★', (int)$t['rating']) ?></td>
+            <td style="max-width:300px;font-size:12.5px;color:var(--gray-600);"><?= htmlspecialchars($t['message']) ?></td>
+            <td style="font-size:12px;color:var(--gray-400);"><?= date('M d, Y', strtotime($t['created_at'])) ?></td>
+          </tr>
+          <?php endforeach; else: ?>
+          <tr><td colspan="6" class="no-data">No testimonials yet.</td></tr>
+          <?php endif; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════ RESERVATION ════════════ -->
 <div id="page-reservation" class="page-section <?= $page==='reservation'?'active':'' ?>">
   <div class="page-title">Reservations</div>
   <div class="toolbar">
+    <form method="POST" style="display:inline;">
+      <button type="submit" name="toggle_reservations" class="btn <?= $reservations_open ? 'btn-red' : 'btn-green' ?>">
+        <?= $reservations_open ? '🔒 Disable Reservations' : '🔓 Enable Reservations' ?>
+      </button>
+    </form>
+    <span style="font-size:13px;color:var(--gray-600);margin-left:8px;">
+      Reservations are currently: <strong style="color:<?= $reservations_open ? '#16a34a' : '#dc2626' ?>;"><?= $reservations_open ? 'Open' : 'Closed' ?></strong>
+    </span>
     <div class="toolbar-right">
       <span style="font-size:13px;color:var(--gray-600);">Search:</span>
       <input type="text" class="search-input" oninput="filterTable('reservTable',this.value)" placeholder=""/>
@@ -1244,9 +1516,7 @@ thead th.sortable::after{
     <div class="table-wrap">
       <table id="reservTable">
         <thead>
-          <tr>
-            <th>ID</th><th>Student</th><th>ID Number</th><th>Purpose</th><th>Lab</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th>
-          </tr>
+          <tr><th>ID</th><th>Student</th><th>ID Number</th><th>Purpose</th><th>Lab</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th></tr>
         </thead>
         <tbody>
           <?php if ($reservations): foreach ($reservations as $rv): ?>
@@ -1260,6 +1530,7 @@ thead th.sortable::after{
             <td><?= htmlspecialchars($rv['time_in'] ?? '—') ?></td>
             <td><span class="badge badge-<?= $rv['status'] ?>"><?= ucfirst($rv['status']) ?></span></td>
             <td style="display:flex;gap:5px;">
+              <?php if ($rv['status'] === 'pending'): ?>
               <form method="POST" style="display:inline;">
                 <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
                 <button type="submit" name="approve_reservation" class="btn btn-green btn-sm">Approve</button>
@@ -1268,6 +1539,9 @@ thead th.sortable::after{
                 <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
                 <button type="submit" name="reject_reservation" class="btn btn-red btn-sm">Reject</button>
               </form>
+              <?php else: ?>
+              <span style="font-size:12px;color:var(--gray-400);">—</span>
+              <?php endif; ?>
             </td>
           </tr>
           <?php endforeach; else: ?>
@@ -1846,6 +2120,29 @@ function buildChart(canvasId){
 }
 buildChart('purposeChart');
 buildChart('reportsChart');
+buildChart('analyticsPieChart');
+
+// ── Analytics Bar Chart (Daily sit-ins) ──────────────────────
+(function(){
+  var ctx = document.getElementById('analyticsBarChart');
+  if (!ctx) return;
+  var dailyLabels = <?php echo json_encode(array_map(fn($d) => date('M d', strtotime($d['date'])), $daily_stats) ?: []); ?>;
+  var dailyCounts = <?php echo json_encode(array_column($daily_stats, 'cnt') ?: []); ?>;
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: dailyLabels,
+      datasets: [{ label: 'Sit-ins', data: dailyCounts, backgroundColor: '#1B5886', borderRadius: 5 }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1 } }
+      },
+      responsive: true
+    }
+  });
+})();
 </script>
 </body>
 </html>

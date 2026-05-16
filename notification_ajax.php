@@ -12,7 +12,7 @@ if (!isset($_SESSION['logged_in']) || $_SESSION['logged_in'] !== true) {
 $student_id = (int)$_SESSION['student_id'];
 
 try {
-    $stmt = $pdo->prepare("SELECT id, message, is_read, created_at FROM notifications WHERE student_id = ? ORDER BY created_at DESC LIMIT 30");
+    $stmt = $pdo->prepare("SELECT id, message, is_read, created_at, type FROM notifications WHERE student_id = ? ORDER BY created_at DESC LIMIT 50");
     $stmt->execute([$student_id]);
     $notifications = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
