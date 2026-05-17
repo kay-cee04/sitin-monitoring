@@ -184,65 +184,25 @@ $students = $pdo->query("SELECT id, id_number, firstname, middlename, lastname, 
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);font-size:14px;}
 
-/* ── NAV ── */
+/* ── NAV ── (styles provided by admin_nav.php include) */
 nav{
   background:var(--blue-dk);
-  height:56px;padding:0 20px;
+  height:50px;padding:0 16px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   position:sticky;
+  gap:10px;
   top:0;z-index:200;
 }
-
-.nav-brand{
-  font-size:14px;
-  font-weight:800;
-  color:#fff;
-  white-space:nowrap;
-  letter-spacing:-0.01em;
-}
-
-.nav-links{
-  display:flex;
-  align-items:center;
-  gap:1px;
-  flex-wrap:wrap;
-}
-
-.nav-links a{
-  font-size:12.5px;
-  font-weight:500;
-  color:rgba(255,255,255,0.8);
-  text-decoration:none;
-  padding:6px 12px;
-  border-radius:4px;
-  white-space:nowrap;
-  transition:all .15s;
-}
-
-.nav-links a:hover{
-  color:#fff;
-  background:rgba(255,255,255,0.12);
-}
-
-.nav-links a.active{
-  color:#89CFF1;
-  font-weight:600;
-}
-
-.btn-logout-nav{
-  background:#e8b800;
-  color:#1a1a00 !important;
-  font-weight:700 !important;
-  border-radius:4px;
-  padding:6px 16px !important;
-  margin-left:8px;
-}
-
-.btn-logout-nav:hover{
-  background:#ffd000 !important;
-}
+.nav-brand{font-size:13px;font-weight:700;color:#fff;white-space:nowrap;flex-shrink:0;}
+.nav-links{display:flex;align-items:center;gap:1px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+.nav-links::-webkit-scrollbar{display:none;}
+.nav-links a{font-size:11.5px;font-weight:500;color:rgba(255,255,255,0.82);text-decoration:none;padding:5px 8px;border-radius:4px;white-space:nowrap;transition:all .15s;flex-shrink:0;}
+.nav-links a:hover{color:#fff;background:rgba(255,255,255,0.13);}
+.nav-links a.active{color:#89CFF1;font-weight:700;background:rgba(137,207,241,0.1);}
+.btn-logout-nav{background:#e8b800;color:#1a1a00 !important;font-weight:700 !important;border-radius:4px;padding:4px 12px !important;margin-left:4px;flex-shrink:0;}
+.btn-logout-nav:hover{background:#ffd000 !important;}
 
 /* ── FLASH ── */
 .flash{
@@ -685,20 +645,7 @@ tbody td{
 <body>
 
 <!-- ══════════════ NAV ══════════════ -->
-<nav>
-  <div class="nav-brand">College of Computer Studies Admin</div>
-  <div class="nav-links">
-    <a href="admin_dashboard.php?page=home">Home</a>
-    <a href="#" onclick="openModal('searchModal');return false;">Search</a>
-    <a href="admin_dashboard.php?page=students">Students</a>
-    <a href="#" onclick="openBlankSitin(); return false;">Sit-in</a>
-    <a href="admin_sitin_history.php" class="active">View Sit-in History</a>
-    <a href="admin_dashboard.php?page=reports">Sit-in Reports</a>
-    <a href="admin_dashboard.php?page=feedback">Feedback Reports</a>
-    <a href="admin_dashboard.php?page=reservation">Reservation</a>
-    <a href="admin_logout.php" class="btn-logout-nav">Log out</a>
-  </div>
-</nav>
+<?php $admin_active_file = 'admin_sitin_history.php'; $admin_active_page = ''; require 'admin_nav.php'; ?>
 
 <!-- ══════════════ BODY ══════════════ -->
 <div class="page-body">

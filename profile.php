@@ -36,6 +36,9 @@ $student = $stmt->fetch();
 if ($student && isset($student['profile_photo'])) {
     $_SESSION['profile_photo'] = $student['profile_photo'];
 }
+if ($student && isset($student['preferred_pc_number'])) {
+    $_SESSION['preferred_pc_number'] = $student['preferred_pc_number'];
+}
 
 $photoSrc = (!empty($_SESSION['profile_photo']))
     ? 'uploads/profiles/' . htmlspecialchars($_SESSION['profile_photo'])
@@ -80,13 +83,13 @@ function parseNotification($text) {
 function getNotificationIcon($message) {
     $msgLower = strtolower($message);
     if (strpos($msgLower, 'announcement') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
     } elseif (strpos($msgLower, 'feedback') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     } elseif (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
     } else {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
     }
 }
 
@@ -105,16 +108,71 @@ function val($student, $key, $session_key = null) {
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;
-  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-300:#b8c8dc;
-  --gray-400:#8aaac8;--gray-500:#6b8fae;--gray-600:#3d607f;
-  --gray-700:#2a4560;--gray-800:#1a2e45;--white:#fff;
-  --radius:8px;--radius-lg:12px;
-  --shadow:0 1px 4px rgba(0,58,107,0.08);--shadow-md:0 4px 20px rgba(0,58,107,0.12);
-  --red:#dc2626;--red-lt:#fef2f2;--green:#16a34a;--green-lt:#f0fdf4;
+  --blue:#1B5886;
+  --blue-dk:#003A6B;
+  --blue-lt:#e8f4fb;
+  --blue-bd:#89CFF1;
+  --gray-50:#f4f8fc;
+  --gray-100:#e8f0f7;
+  --gray-200:#cddaec;
+  --gray-300:#b8c8dc;
+  --gray-400:#8aaac8;
+  --gray-500:#6b8fae;
+  --gray-600:#3d607f;
+  --gray-700:#2a4560;
+  --gray-800:#1a2e45;
+  --white:#fff;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow:0 1px 4px rgba(0,58,107,0.08);
+  --shadow-md:0 4px 20px rgba(0,58,107,0.12);
+  --red:#dc2626;
+  --red-lt:#fef2f2;
+  --green:#16a34a;
+  --green-lt:#f0fdf4;
+  --notif-bg:#ffffff;
+  --notif-border:#e2e8f0;
+  --notif-hover:#f8fafc;
+  --card-bg:#ffffff;
+  --card-border:#cddaec;
+  --text-primary:#1a2e45;
+  --text-secondary:#3d607f;
+  --text-muted:#6b8fae;
+  --border-light:#e8f0f7;
+}
+body.dark-mode {
+  --blue:#1B5886;
+  --blue-dk:#003A6B;
+  --blue-lt:#1e293b;
+  --blue-bd:#3b82f6;
+  --gray-50:#0f172a;
+  --gray-100:#1a1a1a;
+  --gray-200:#2a2a2a;
+  --gray-300:#3a3a3a;
+  --gray-400:#6b7280;
+  --gray-500:#9ca3af;
+  --gray-600:#d1d5db;
+  --gray-700:#e5e7eb;
+  --gray-800:#f3f4f6;
+  --white:#1e1e2e;
+  --shadow:0 1px 3px rgba(0,0,0,0.5);
+  --shadow-md:0 10px 25px -5px rgba(0,0,0,0.5);
+  --notif-bg:#1e1e2e;
+  --notif-border:#2a2a3a;
+  --notif-hover:#2a2a3a;
+  --card-bg:#1e1e2e;
+  --card-border:#2a2a3a;
+  --text-primary:#f3f4f6;
+  --text-secondary:#d1d5db;
+  --text-muted:#9ca3af;
+  --border-light:#2a2a3a;
+  --red:#ef4444;
+  --red-lt:#7f1d1d;
+  --green:#22c55e;
+  --green-lt:#14532d;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);min-height:100vh;font-size:14px;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--text-primary);min-height:100vh;font-size:14px;transition:background 0.2s, color 0.2s;}
 
 nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
 .nav-brand{font-size:15px;font-weight:800;color:#fff;letter-spacing:-0.02em;}
@@ -134,21 +192,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.7;transform:scale(1.25);}}
 .notif-badge{background:#e53e3e;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0 4px;}
 .notif-badge.show{display:flex;}
-
-.notif-dropdown{
-  display:none;
-  position:absolute;
-  top:calc(100% + 8px);
-  right:0;
-  background:var(--white);
-  border:1px solid var(--gray-200);
-  border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-md);
-  width:450px;
-  max-width:calc(100vw - 40px);
-  z-index:300;
-  overflow:hidden;
-}
+.notif-dropdown{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--notif-bg);border:1px solid var(--notif-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);width:450px;max-width:calc(100vw - 40px);z-index:300;overflow:hidden;}
 .notif-dropdown.open{display:block;}
 .notif-head{background:var(--blue-dk);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .notif-head-title{color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;}
@@ -156,106 +200,39 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-mark{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;padding:4px 10px;border-radius:5px;cursor:pointer;transition:background .15s;}
 .notif-mark:hover{background:rgba(255,255,255,0.3);}
 .notif-caught{font-size:11px;color:rgba(255,255,255,0.55);display:flex;align-items:center;gap:5px;}
-
-.notif-list{
-  max-height:500px;
-  overflow-y:auto;
-  overflow-x:hidden;
-  background:var(--white);
-}
+.notif-list{max-height:500px;overflow-y:auto;overflow-x:hidden;background:var(--notif-bg);}
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-track{background:var(--gray-100);}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:99px;}
-
-.notif-item{
-  display:flex;
-  gap:14px;
-  padding:16px 18px;
-  border-bottom:1px solid var(--gray-100);
-  transition:background .15s;
-  text-decoration:none;
-  color:inherit;
-  cursor:pointer;
-  width:100%;
-}
+.notif-item{display:flex;gap:14px;padding:16px 18px;border-bottom:1px solid var(--notif-border);transition:background .15s;text-decoration:none;color:inherit;cursor:pointer;width:100%;}
 .notif-item:first-child{padding-top:16px;}
 .notif-item:last-child{border-bottom:none;padding-bottom:16px;}
-.notif-item:hover{background:var(--gray-50);}
+.notif-item:hover{background:var(--notif-hover);}
 .notif-item.unread{background:var(--blue-lt);}
-.notif-item.unread:hover{background:#dceef9;}
-
-.notif-icon{
-  display:inline-flex;
-  align-items:flex-start;
-  justify-content:center;
-  width:36px;
-  flex-shrink:0;
-}
-.notif-icon svg{
-  width:20px;
-  height:20px;
-  stroke:#4B5563;
-  stroke-width:1.8;
-  fill:none;
-}
-
-.notif-content{
-  flex:1;
-  min-width:0;
-}
-.notif-title{
-  font-size:14px;
-  color:var(--gray-800);
-  font-weight:700;
-  margin-bottom:6px;
-  line-height:1.4;
-  word-break:break-word;
-  white-space:normal;
-}
-.notif-desc{
-  font-size:13px;
-  color:var(--gray-600);
-  line-height:1.5;
-  word-break:break-word;
-  white-space:normal;
-  margin-bottom:8px;
-}
-.notif-desc br{
-  display:block;
-  content:"";
-  margin-top:4px;
-}
-.notif-date{
-  font-size:11px;
-  color:var(--gray-400);
-  display:flex;
-  align-items:center;
-  gap:6px;
-  margin-top:4px;
-}
-.notif-date::before{
-  content:"";
-  display:inline-block;
-  width:4px;
-  height:4px;
-  background:var(--gray-400);
-  border-radius:50%;
-}
-.notif-empty{padding:48px 24px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
+body.dark-mode .notif-item.unread{background:#2d4a6e;}
+body.dark-mode .notif-item.unread:hover{background:#3b5a82;}
+.notif-icon{display:inline-flex;align-items:flex-start;justify-content:center;width:36px;flex-shrink:0;}
+.notif-icon svg{width:20px;height:20px;stroke:var(--text-secondary);stroke-width:1.8;fill:none;}
+.notif-content{flex:1;min-width:0;}
+.notif-title{font-size:14px;color:var(--text-primary);font-weight:700;margin-bottom:6px;line-height:1.4;word-break:break-word;white-space:normal;}
+.notif-desc{font-size:13px;color:var(--text-secondary);line-height:1.5;word-break:break-word;white-space:normal;margin-bottom:8px;}
+.notif-date{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:4px;}
+.notif-date::before{content:"";display:inline-block;width:4px;height:4px;background:var(--text-muted);border-radius:50%;}
+.notif-empty{padding:48px 24px;text-align:center;font-size:13px;color:var(--text-muted);font-style:italic;}
 
 /* PAGE STYLES */
 .page-body{max-width:920px;margin:0 auto;padding:36px 20px 70px;}
 .page-header{text-align:center;margin-bottom:28px;}
-.page-header h1{font-size:23px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;}
-.page-header p{font-size:13px;color:var(--gray-400);margin-top:4px;}
+.page-header h1{font-size:23px;font-weight:800;color:var(--text-primary);letter-spacing:-0.02em;}
+.page-header p{font-size:13px;color:var(--text-muted);margin-top:4px;}
 .alert{display:flex;align-items:center;gap:10px;padding:12px 16px;border-radius:var(--radius);font-size:13.5px;font-weight:600;margin-bottom:22px;}
-.alert svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.alert-success{background:var(--green-lt);border:1px solid #bbf7d0;color:var(--green);}
+.alert svg{width:17px;height:17px;flex-shrink:0;fill:none;stroke-width:2;}
+.alert-success{background:var(--green-lt);border:1px solid var(--green);color:var(--green);}
 .alert-success svg{stroke:var(--green);}
-.alert-error{background:var(--red-lt);border:1px solid #fecaca;color:var(--red);}
+.alert-error{background:var(--red-lt);border:1px solid var(--red);color:var(--red);}
 .alert-error svg{stroke:var(--red);}
 .profile-layout{display:grid;grid-template-columns:270px 1fr;gap:22px;align-items:start;}
-.card{background:var(--white);border-radius:var(--radius-lg);border:1px solid var(--gray-200);box-shadow:var(--shadow-md);overflow:hidden;}
+.card{background:var(--card-bg);border-radius:var(--radius-lg);border:1px solid var(--card-border);box-shadow:var(--shadow-md);overflow:hidden;}
 .card-head{background:var(--blue);padding:13px 18px;}
 .card-head h3{color:#fff;font-size:13px;font-weight:700;}
 .card-head p{color:rgba(255,255,255,0.55);font-size:12px;margin-top:2px;}
@@ -263,48 +240,52 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .avatar-wrap{position:relative;width:116px;height:116px;}
 .avatar-circle{width:116px;height:116px;border-radius:50%;border:3px solid var(--blue-bd);box-shadow:0 4px 16px rgba(0,58,107,0.15);background:linear-gradient(135deg,var(--blue-lt),#d0e7f5);display:flex;align-items:center;justify-content:center;overflow:hidden;}
 .avatar-circle img{width:100%;height:100%;object-fit:cover;}
-.avatar-circle svg{width:52px;height:52px;stroke:var(--blue);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;}
+.avatar-circle svg{width:52px;height:52px;stroke:var(--blue);fill:none;stroke-width:1.5;}
 .avatar-edit{position:absolute;bottom:4px;right:4px;width:30px;height:30px;border-radius:50%;background:var(--blue);border:2px solid #fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,0.2);transition:background .15s;}
 .avatar-edit:hover{background:var(--blue-dk);}
-.avatar-edit svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
-.stu-name{font-size:15px;font-weight:800;color:var(--blue-dk);text-align:center;line-height:1.35;}
-.stu-course{font-size:12px;color:var(--gray-400);text-align:center;margin-top:2px;}
+.avatar-edit svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2;}
+.stu-name{font-size:15px;font-weight:800;color:var(--text-primary);text-align:center;line-height:1.35;}
+.stu-course{font-size:12px;color:var(--text-muted);text-align:center;margin-top:2px;}
 .id-pill{background:var(--blue-lt);border:1px solid var(--blue-bd);border-radius:20px;padding:5px 14px;font-size:12px;font-weight:700;color:var(--blue);}
 .upload-zone{width:100%;border:2px dashed var(--gray-200);border-radius:var(--radius);padding:14px 10px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;position:relative;}
 .upload-zone:hover{border-color:var(--blue);background:var(--blue-lt);}
 .upload-zone input[type="file"]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
-.uz-icon svg{width:26px;height:26px;stroke:var(--gray-400);fill:none;stroke-width:1.5;}
-.uz-label{font-size:12.5px;color:var(--gray-600);margin-top:4px;font-weight:600;}
-.uz-hint{font-size:11px;color:var(--gray-400);margin-top:2px;}
+.uz-icon svg{width:26px;height:26px;stroke:var(--text-muted);fill:none;stroke-width:1.5;}
+.uz-label{font-size:12.5px;color:var(--text-secondary);margin-top:4px;font-weight:600;}
+.uz-hint{font-size:11px;color:var(--text-muted);margin-top:2px;}
 #photo-selected{font-size:12px;color:var(--blue);word-break:break-all;text-align:center;display:none;}
 .btn-upload{width:100%;padding:9px;border:none;border-radius:var(--radius);background:var(--blue);color:#fff;font-size:13px;font-weight:700;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:6px;}
 .btn-upload:hover{background:var(--blue-dk);}
 .btn-upload svg{width:14px;height:14px;stroke:#fff;fill:none;stroke-width:2;}
 .form-body{padding:26px 28px 30px;}
-.section-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:var(--blue);padding-bottom:8px;border-bottom:1px solid var(--gray-100);margin-bottom:14px;margin-top:22px;}
+.section-label{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.09em;color:var(--blue);padding-bottom:8px;border-bottom:1px solid var(--border-light);margin-bottom:14px;margin-top:22px;}
 .section-label:first-of-type{margin-top:0;}
-.section-label .note{font-weight:400;text-transform:none;font-size:11px;color:var(--gray-400);margin-left:6px;letter-spacing:0;}
+.section-label .note{font-weight:400;text-transform:none;font-size:11px;color:var(--text-muted);margin-left:6px;letter-spacing:0;}
 .field{margin-bottom:14px;}
-.field label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--gray-600);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;}
-.field label svg{width:13px;height:13px;stroke:var(--gray-400);fill:none;stroke-width:2;}
-.field input,.field select{width:100%;padding:9px 12px;border:1.5px solid var(--gray-200);border-radius:var(--radius);font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--gray-800);background:var(--white);outline:none;transition:border-color .15s,box-shadow .15s;}
-.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.1);}
-.field input[readonly]{background:var(--gray-50);color:var(--gray-400);cursor:not-allowed;}
+.field label{display:flex;align-items:center;gap:5px;font-size:11px;font-weight:800;color:var(--text-secondary);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;}
+.field label svg{width:13px;height:13px;stroke:var(--text-muted);fill:none;stroke-width:2;}
+.field input,.field select{width:100%;padding:9px 12px;border:1.5px solid var(--border-light);border-radius:var(--radius);font-size:13.5px;font-family:'Plus Jakarta Sans',sans-serif;color:var(--text-primary);background:var(--card-bg);outline:none;transition:border-color .15s,box-shadow .15s;}
+.field input:focus,.field select:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(59,130,246,0.1);}
+.field input[readonly]{background:var(--gray-100);color:var(--text-muted);cursor:not-allowed;}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
 .field-row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;}
 .pw-wrap{position:relative;}
 .pw-wrap input{padding-right:40px;}
-.pw-eye{position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;display:flex;align-items:center;color:var(--gray-400);transition:color .15s;}
+.pw-eye{position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;display:flex;align-items:center;color:var(--text-muted);transition:color .15s;}
 .pw-eye:hover{color:var(--blue);}
 .pw-eye svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;}
-hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
+hr.divider{border:none;border-top:1px solid var(--border-light);margin:6px 0 18px;}
 .btn-row{display:flex;gap:10px;}
 .btn-save{flex:1;padding:11px;border:none;border-radius:var(--radius);background:var(--blue-dk);color:#fff;font-size:14px;font-weight:800;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:background .15s;display:flex;align-items:center;justify-content:center;gap:7px;}
 .btn-save:hover{background:#002255;}
+body.dark-mode .btn-save:hover{background:#1e40af;}
 .btn-save svg{width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;}
-.btn-cancel{padding:11px 18px;border-radius:var(--radius);border:1.5px solid var(--gray-200);background:transparent;color:var(--gray-600);font-size:14px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;}
+.btn-cancel{padding:11px 18px;border-radius:var(--radius);border:1.5px solid var(--border-light);background:transparent;color:var(--text-secondary);font-size:14px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;cursor:pointer;transition:all .15s;display:flex;align-items:center;gap:6px;}
 .btn-cancel:hover{border-color:var(--blue);color:var(--blue);}
 .btn-cancel svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;}
+
+.btn-dark-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
+.btn-dark-toggle:hover{background:rgba(255,255,255,0.2);color:#fff;}
 
 @media(max-width:760px){
   .profile-layout{grid-template-columns:1fr;}
@@ -319,17 +300,6 @@ hr.divider{border:none;border-top:1px solid var(--gray-100);margin:6px 0 18px;}
   .notif-title{font-size:13px;}
   .notif-desc{font-size:12px;}
 }
-
-.btn-dark-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
-.btn-dark-toggle:hover{background:rgba(255,255,255,0.2);color:#fff;}
-body.dark-mode{background:#0f172a;color:#e2e8f0;}
-body.dark-mode nav{background:#020617;}
-body.dark-mode .card{background:#1e293b;border-color:#334155;}
-body.dark-mode .card-head{background:#1B5886;}
-body.dark-mode table thead tr{background:#1B5886;}
-body.dark-mode tbody td{color:#cbd5e1;}
-body.dark-mode tbody tr{border-color:#334155;}
-body.dark-mode tbody tr:hover{background:#273549;}
 </style>
 </head>
 <body>
@@ -408,7 +378,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
     <a href="feedback.php">Feedback</a>
     <a href="reservation.php">Reservation</a>
     <a href="software.php">Lab Software</a>
-    <button onclick="toggleDarkMode()" class="btn-dark-toggle" id="darkToggle" title="Toggle dark mode"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+    <button onclick="toggleDarkMode()" class="btn-dark-toggle" id="darkToggle" title="Toggle dark mode"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <a href="logout.php" class="btn-logout">Log out</a>
   </div>
 </nav>
@@ -480,7 +450,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
 
           <div class="section-label">Account</div>
           <div class="field">
-            <label><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="10" r="2.5"/><path d="M4 19c0-2.2 2-4 4.5-4s4.5 1.8 4.5 4"/></svg>ID Number <small style="font-weight:400;text-transform:none;color:var(--gray-400);font-size:11px;">(cannot be changed)</small></label>
+            <label><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><circle cx="8.5" cy="10" r="2.5"/><path d="M4 19c0-2.2 2-4 4.5-4s4.5 1.8 4.5 4"/></svg>ID Number <small style="font-weight:400;text-transform:none;color:var(--text-muted);font-size:11px;">(cannot be changed)</small></label>
             <input type="text" value="<?= val($student,'id_number','id_number') ?>" readonly/>
           </div>
 
@@ -519,12 +489,13 @@ body.dark-mode tbody tr:hover{background:#273549;}
 </div>
 
 <script>
-// FIXED: Proper time difference calculation
+// Store notification dropdown state
+var notifOpen = false;
+
 function relTime(ts) {
   if (!ts || ts <= 0) return '';
   var now = Math.floor(Date.now() / 1000);
   var diff = now - ts;
-  
   if (diff < 0) return 'Just now';
   if (diff < 60) return 'Just now';
   if (diff < 3600) {
@@ -552,69 +523,11 @@ function refreshTimestamps() {
   });
 }
 
-// REAL-TIME NOTIFICATION POLLING (No Page Refresh)
 var currentUnreadCount = <?= $unread_count ?>;
 
-function pollNotifications() {
-  fetch('notification_ajax.php?action=fetch')
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-      if (!data || !data.notifications) return;
-      
-      var container = document.getElementById('notifListContainer');
-      var badge = document.getElementById('notifBadge');
-      var redDot = document.getElementById('redDot');
-      var newPill = document.getElementById('newNotifPill');
-      var headRight = document.getElementById('notifHeadRight');
-      
-      currentUnreadCount = data.notifications.filter(function(n) { return parseInt(n.is_read) === 0; }).length;
-      
-      if (currentUnreadCount > 0) {
-        badge.textContent = currentUnreadCount > 99 ? '99+' : currentUnreadCount;
-        badge.classList.add('show');
-        if (redDot) redDot.style.display = '';
-        if (newPill) { newPill.style.display = ''; newPill.textContent = currentUnreadCount + ' new'; }
-        headRight.innerHTML = '<form method="POST" action="profile.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
-      } else {
-        badge.classList.remove('show');
-        badge.textContent = '';
-        if (redDot) redDot.style.display = 'none';
-        if (newPill) newPill.style.display = 'none';
-        headRight.innerHTML = '<span class="notif-caught"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All caught up</span>';
-      }
-      
-      if (data.notifications.length > 0) {
-        var html = '';
-        data.notifications.forEach(function(n) {
-          var parsed = parseNotificationJS(n.message);
-          var iconSvg = getNotificationIconJS(n.message);
-          var isUnreadClass = parseInt(n.is_read) === 0 ? 'unread' : 'read';
-          html += '<a href="notification_handler.php?id=' + n.id + '" class="notif-item ' + isUnreadClass + '" data-id="' + n.id + '">' +
-                  '<div class="notif-icon">' + iconSvg + '</div>' +
-                  '<div class="notif-content">' +
-                  '<div class="notif-title">' + escapeHtml(parsed.title) + '</div>' +
-                  (parsed.description ? '<div class="notif-desc">' + escapeHtml(parsed.description).replace(/\n/g, '<br>') + '</div>' : '') +
-                  '<div class="notif-date" data-ts="' + Math.floor(new Date(n.created_at.replace(' ', 'T')).getTime() / 1000) + '"></div>' +
-                  '</div>' +
-                  '</a>';
-        });
-        container.innerHTML = html;
-      } else {
-        container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
-      }
-      
-      refreshTimestamps();
-    })
-    .catch(function(error) {
-      console.log('Polling error:', error);
-    });
-}
-
-// JavaScript versions of PHP helper functions
 function parseNotificationJS(text) {
   text = text.trim();
   text = text.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{FE00}-\u{FEFF}\u{1F300}-\u{1F9FF}\s]+/u, '');
-  
   if (text.indexOf('New announcement from') === 0) {
     var parts = text.split(':');
     return { title: parts[0], description: parts[1] ? parts[1].trim() : '' };
@@ -634,13 +547,13 @@ function parseNotificationJS(text) {
 function getNotificationIconJS(message) {
   var msgLower = message.toLowerCase();
   if (msgLower.indexOf('announcement') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
   } else if (msgLower.indexOf('feedback') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   } else if (msgLower.indexOf('logged out') !== false || msgLower.indexOf('logout') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
   } else {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
   }
 }
 
@@ -649,15 +562,61 @@ function escapeHtml(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Initial load
-refreshTimestamps();
+function pollNotifications() {
+  fetch('notification_ajax.php?action=fetch')
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      if (!data || !data.notifications) return;
+      var container = document.getElementById('notifListContainer');
+      var badge = document.getElementById('notifBadge');
+      var redDot = document.getElementById('redDot');
+      var newPill = document.getElementById('newNotifPill');
+      var headRight = document.getElementById('notifHeadRight');
+      currentUnreadCount = data.notifications.filter(function(n) { return parseInt(n.is_read) === 0; }).length;
+      if (currentUnreadCount > 0) {
+        badge.textContent = currentUnreadCount > 99 ? '99+' : currentUnreadCount;
+        badge.classList.add('show');
+        if (redDot) redDot.style.display = '';
+        if (newPill) { newPill.style.display = ''; newPill.textContent = currentUnreadCount + ' new'; }
+        headRight.innerHTML = '<form method="POST" action="profile.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
+      } else {
+        badge.classList.remove('show');
+        badge.textContent = '';
+        if (redDot) redDot.style.display = 'none';
+        if (newPill) newPill.style.display = 'none';
+        headRight.innerHTML = '<span class="notif-caught"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All caught up</span>';
+      }
+      if (data.notifications.length > 0) {
+        var html = '';
+        data.notifications.forEach(function(n) {
+          var parsed = parseNotificationJS(n.message);
+          var iconSvg = getNotificationIconJS(n.message);
+          var isUnreadClass = parseInt(n.is_read) === 0 ? 'unread' : 'read';
+          html += '<a href="notification_handler.php?id=' + n.id + '" class="notif-item ' + isUnreadClass + '" data-id="' + n.id + '">' +
+                  '<div class="notif-icon">' + iconSvg + '</div>' +
+                  '<div class="notif-content">' +
+                  '<div class="notif-title">' + escapeHtml(parsed.title) + '</div>' +
+                  (parsed.description ? '<div class="notif-desc">' + escapeHtml(parsed.description).replace(/\n/g, '<br>') + '</div>' : '') +
+                  '<div class="notif-date" data-ts="' + Math.floor(new Date(n.created_at.replace(' ', 'T')).getTime() / 1000) + '"></div>' +
+                  '</div>' +
+                  '</a>';
+        });
+        container.innerHTML = html;
+      } else {
+        container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+      }
+      refreshTimestamps();
+    })
+    .catch(function(error) {
+      console.log('Polling error:', error);
+    });
+}
 
-// Start polling every 15 seconds
+refreshTimestamps();
 setInterval(refreshTimestamps, 30000);
 setInterval(pollNotifications, 15000);
-pollNotifications(); // Initial poll
+pollNotifications();
 
-var notifOpen = false;
 function toggleNotif() {
   notifOpen = !notifOpen;
   document.getElementById('notifDropdown').classList.toggle('open', notifOpen);
@@ -703,13 +662,17 @@ zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.b
 zone.addEventListener('dragleave', function() { zone.style.borderColor=''; zone.style.background=''; });
 zone.addEventListener('drop', function() { zone.style.borderColor=''; zone.style.background=''; });
 
-// ── Dark Mode ──────────────────────────────────────────────────
-var SUN_SVG2  = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-var MOON_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+// Dark Mode
+var SUN_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+var MOON_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
 function applyDarkMode(on) {
   document.body.classList.toggle('dark-mode', on);
   var btn = document.getElementById('darkToggle');
   if (btn) btn.innerHTML = on ? SUN_SVG2 : MOON_SVG2;
+  if (notifOpen) {
+    document.getElementById('notifDropdown').classList.add('open');
+  }
 }
 function toggleDarkMode() {
   var on = !document.body.classList.contains('dark-mode');
@@ -717,7 +680,6 @@ function toggleDarkMode() {
   applyDarkMode(on);
 }
 if (localStorage.getItem('darkMode') === '1') applyDarkMode(true);
-
 </script>
 </body>
 </html>

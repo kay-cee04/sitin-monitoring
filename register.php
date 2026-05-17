@@ -9,7 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $address=trim($_POST['address']??''); $course=trim($_POST['course']??'');
     $year_level=trim($_POST['year_level']??''); $password=$_POST['password']??'';
     $confirm_pw=$_POST['confirm_password']??'';
-    if (!$id_number||!$lastname||!$firstname||!$email||!$course||!$year_level||!$password) $error='Please fill in all required fields.';
+    $sit_purpose=trim($_POST['sit_purpose']??'');
+    $laboratory=trim($_POST['laboratory']??'');
+    $pc_number=trim($_POST['pc_number']??'');
+    if (!$id_number||!$lastname||!$firstname||!$email||!$course||!$year_level||!$password||!$sit_purpose||!$laboratory) $error='Please fill in all required fields.';
     elseif (!filter_var($email,FILTER_VALIDATE_EMAIL)) $error='Please enter a valid email address.';
     elseif (strlen($password)<6) $error='Password must be at least 6 characters.';
     elseif ($password!==$confirm_pw) $error='Passwords do not match.';
@@ -20,8 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $s=$pdo->prepare("SELECT id FROM students WHERE email=? LIMIT 1"); $s->execute([$email]);
             if ($s->fetch()) $error='Email address is already registered.';
             else {
-                $pdo->prepare("INSERT INTO students (id_number,lastname,firstname,middlename,course,year_level,email,password,address,session) VALUES (?,?,?,?,?,?,?,?,?,30)")
-                    ->execute([$id_number,$lastname,$firstname,$middlename,$course,$year_level,$email,password_hash($password,PASSWORD_DEFAULT),$address]);
+                // Ensure sit_purpose & laboratory columns exist
+                try { $pdo->exec("ALTER TABLE students ADD COLUMN sit_purpose VARCHAR(100) DEFAULT NULL"); } catch(Exception $e){}
+                try { $pdo->exec("ALTER TABLE students ADD COLUMN laboratory VARCHAR(50) DEFAULT NULL"); } catch(Exception $e){}
+                try { $pdo->exec("ALTER TABLE sit_in_history ADD COLUMN pc_number VARCHAR(20) DEFAULT NULL"); } catch(Exception $e){}
+                $pdo->prepare("INSERT INTO students (id_number,lastname,firstname,middlename,course,year_level,email,password,address,session,sit_purpose,laboratory) VALUES (?,?,?,?,?,?,?,?,?,30,?,?)")
+                    ->execute([$id_number,$lastname,$firstname,$middlename,$course,$year_level,$email,password_hash($password,PASSWORD_DEFAULT),$address,$sit_purpose,$laboratory]);
+                // Immediately create a sit-in record for this student
+                $new_student_id = $pdo->lastInsertId();
+                $fullname = trim($firstname.' '.$middlename.' '.$lastname);
+                $pdo->prepare("INSERT INTO sit_in_history (student_id, id_number, fullname, sit_purpose, laboratory, pc_number, login_time, date, session_at_login) VALUES (?,?,?,?,?,?,NOW(),CURDATE(),30)")
+                    ->execute([$new_student_id,$id_number,$fullname,$sit_purpose,$laboratory,$pc_number ?: null]);
                 $success='Account created! You can now log in.';
             }
         }
@@ -132,6 +144,28 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
             <select name="year_level" required><option value="">Select year</option>
               <?php foreach(['1st Year'=>1,'2nd Year'=>2,'3rd Year'=>3,'4th Year'=>4] as $l=>$v): ?><option value="<?=$v?>" <?=($_POST['year_level']??'')==$v?'selected':''?>><?=$l?></option><?php endforeach; ?>
             </select>
+          </div>
+        </div>
+        <div class="section-title">Sit-in Details</div>
+        <div class="reg-grid">
+          <div class="field"><label>Purpose <span class="req">*</span></label>
+            <select name="sit_purpose" required>
+              <option value="">Select purpose</option>
+              <?php foreach(['C Programming','Java Programming','Python Programming','C# Programming','PHP Programming','Database (MySQL)','Web Development','Data Structures','Computer Networks','Operating Systems','System Administration','Thesis / Capstone','Research','Online Class','Others'] as $p): ?>
+              <option value="<?=$p?>" <?=($_POST['sit_purpose']??'')===$p?'selected':''?>><?=$p?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field"><label>Laboratory Room <span class="req">*</span></label>
+            <select name="laboratory" required>
+              <option value="">Select lab</option>
+              <?php foreach(['Lab 517','Lab 524','Lab 526','Lab 528','Lab 530','Lab 542','Lab 544'] as $l): ?>
+              <option value="<?=$l?>" <?=($_POST['laboratory']??'')===$l?'selected':''?>><?=$l?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <div class="field full"><label>PC Number <small style="font-weight:400;color:var(--gray-400);">(optional — enter the PC you'll be using)</small></label>
+            <input type="text" name="pc_number" placeholder="e.g. PC-01, PC-12" value="<?= htmlspecialchars($_POST['pc_number']??'') ?>" style="text-transform:uppercase;" oninput="this.value=this.value.toUpperCase()"/>
           </div>
         </div>
         <div class="section-title">Account Security</div>

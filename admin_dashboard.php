@@ -17,12 +17,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Post announcement
     if (isset($_POST['add_announcement'])) {
         $content    = trim($_POST['content'] ?? '');
-        $admin_name = $_SESSION['admin_username'];
-        $pdo->prepare("INSERT INTO announcements (admin_name, content) VALUES (?, ?)")
+        $admin_name = $_SESSION['Admin_username'];
+        $pdo->prepare("INSERT INTO announcements (Admin_name, content) VALUES (?, ?)")
             ->execute([$admin_name, $content ?: null]);
 
         // Push a notification to every student
-        $notif_msg    = '📢 New announcement from ' . $admin_name . ($content ? ': ' . mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '…' : '') : '.');
+        $notif_msg    = '📢 New announcement from ' . $Admin_name . ($content ? ': ' . mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '…' : '') : '.');
         $all_students = $pdo->query("SELECT id FROM students")->fetchAll();
         $ins = $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)");
         foreach ($all_students as $stu) {
@@ -351,46 +351,54 @@ body{
 /* ── NAV ── */
 nav{
   background:var(--blue-dk);
-  height:56px;
-  padding:0 20px;
+  height:50px;
+  padding:0 16px;
   display:flex;
   align-items:center;
   justify-content:space-between;
   position:sticky;
   top:0;z-index:200;
+  gap:10px;
 }
 
 .nav-brand{
-  font-size:15px;
+  font-size:13px;
   font-weight:700;
-  color:#fff;white-space:nowrap;
+  color:#fff;
+  white-space:nowrap;
+  flex-shrink:0;
 }
 .nav-links{
   display:flex;
   align-items:center;
-  gap:2px;
-  flex-wrap:wrap;
+  gap:1px;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  scrollbar-width:none;
 }
+.nav-links::-webkit-scrollbar{display:none;}
 
 .nav-links a{
-  font-size:12.5px;
+  font-size:11.5px;
   font-weight:500;
-  color:rgba(255,255,255,0.8);
+  color:rgba(255,255,255,0.82);
   text-decoration:none;
-  padding:5px 10px;
+  padding:5px 8px;
   border-radius:4px;
   white-space:nowrap;
   transition:all .15s;
+  flex-shrink:0;
 }
 
 .nav-links a:hover{
   color:#fff;
-  background:rgba(255,255,255,0.12);
+  background:rgba(255,255,255,0.13);
 }
 
 .nav-links a.active{
   color:#89CFF1;
-  font-weight:600;
+  font-weight:700;
+  background:rgba(137,207,241,0.1);
 }
 
 .btn-logout-nav{
@@ -398,8 +406,9 @@ nav{
   color:#1a1a00 !important;
   font-weight:700 !important;
   border-radius:4px;
-  padding:5px 14px !important;
+  padding:4px 12px !important;
   margin-left:4px;
+  flex-shrink:0;
 }
 
 .btn-logout-nav:hover{
@@ -961,22 +970,7 @@ thead th.sortable::after{
 <body>
 
 <!-- ══════════════ NAV ══════════════ -->
-<nav>
-  <div class="nav-brand">College of Computer Studies Admin</div>
-  <div class="nav-links">
-    <a href="?page=home"         class="<?= $page==='home'        ?'active':'' ?>">Home</a>
-    <a href="#"                  onclick="openModal('searchModal');return false;">Search</a>
-    <a href="?page=students"     class="<?= $page==='students'    ?'active':'' ?>">Students</a>
-    <a href="#" class="<?= $page==='sitin' ? 'active' : '' ?>" onclick="openBlankSitin(); return false;">Sit-in</a>
-    <a href="admin_sitin_history.php">View History</a>
-    <a href="?page=reports"      class="<?= $page==='reports'     ?'active':'' ?>">Reports</a>
-    <a href="?page=analytics"    class="<?= $page==='analytics'   ?'active':'' ?>">Analytics</a>
-    <a href="?page=software"     class="<?= $page==='software'    ?'active':'' ?>">Lab Software</a>
-    <a href="?page=testimonials" class="<?= $page==='testimonials' ?'active':'' ?>">Testimonials</a>
-    <a href="?page=reservation"  class="<?= $page==='reservation' ?'active':'' ?>">Reservation</a>
-    <a href="admin_logout.php"   class="btn-logout-nav">Log out</a>
-  </div>
-</nav>
+<?php $admin_active_page = $page; require 'admin_nav.php'; ?>
 
 <!-- ══════════════ BODY ══════════════ -->
 <div class="page-body">
@@ -1556,6 +1550,102 @@ thead th.sortable::after{
 </div><!-- end page-body -->
 
 <!-- ══════════════════════════════════════
+     FLOATING AI CHAT WIDGET
+══════════════════════════════════════ -->
+
+<!-- Toggle Button -->
+<button id="aiFab" onclick="aiToggle()" title="AI Assistant"
+  style="position:fixed;bottom:24px;right:24px;z-index:9999;
+         width:52px;height:52px;border-radius:50%;border:none;
+         background:var(--blue-dk);color:#fff;font-size:22px;
+         box-shadow:0 4px 18px rgba(0,58,107,0.35);
+         cursor:pointer;display:flex;align-items:center;justify-content:center;
+         transition:transform .2s,box-shadow .2s;">
+  ✦
+</button>
+
+<!-- Unread dot -->
+<span id="aiDot" style="display:none;position:fixed;bottom:68px;right:24px;z-index:10000;
+  width:10px;height:10px;background:#e63946;border-radius:50%;
+  border:2px solid #fff;"></span>
+
+<!-- Chat Panel -->
+<div id="aiPanel" style="display:none;position:fixed;bottom:88px;right:24px;z-index:9998;
+  width:360px;max-width:calc(100vw - 32px);
+  background:#fff;border-radius:14px;
+  box-shadow:0 8px 40px rgba(0,58,107,0.18);
+  flex-direction:column;overflow:hidden;
+  animation:aiSlideUp .22s ease;">
+
+  <style>
+  @keyframes aiSlideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+  .ai-msg{display:flex;margin-bottom:2px;}
+  .ai-msg-user{justify-content:flex-end;}
+  .ai-msg-bot{justify-content:flex-start;}
+  .ai-bubble{max-width:82%;padding:9px 13px;border-radius:14px;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+  .ai-bubble-bot{background:#f0f4f8;color:#1a2e45;border-bottom-left-radius:3px;}
+  .ai-bubble-user{background:var(--blue-dk);color:#fff;border-bottom-right-radius:3px;}
+  .ai-bubble-typing{background:#f0f4f8;color:#8aaac8;font-style:italic;font-size:12px;border-bottom-left-radius:3px;animation:aiPulse 1.2s ease-in-out infinite;}
+  @keyframes aiPulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .ai-chip{background:#e8f4fb;color:#003A6B;border:1px solid #89CFF1;border-radius:20px;padding:4px 10px;font-size:11px;font-weight:600;cursor:pointer;transition:all .15s;font-family:inherit;white-space:nowrap;}
+  .ai-chip:hover{background:#003A6B;color:#fff;}
+  #aiInput2:focus{outline:none;border-color:var(--blue)!important;}
+  </style>
+
+  <!-- Header -->
+  <div style="background:var(--blue-dk);padding:12px 16px;display:flex;align-items:center;gap:9px;flex-shrink:0;">
+    <div style="width:30px;height:30px;background:rgba(137,207,241,0.2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;">✦</div>
+    <div style="flex:1;min-width:0;">
+      <div style="color:#fff;font-weight:700;font-size:13px;">CCS Admin AI</div>
+      <div style="color:rgba(255,255,255,0.55);font-size:10.5px;">Ask me anything</div>
+    </div>
+    <button onclick="aiClearChat()" title="Clear"
+      style="background:rgba(255,255,255,0.1);border:none;color:rgba(255,255,255,0.7);font-size:10px;padding:3px 8px;border-radius:4px;cursor:pointer;font-family:inherit;">
+      Clear
+    </button>
+    <button onclick="aiToggle()" title="Close"
+      style="background:none;border:none;color:rgba(255,255,255,0.7);font-size:18px;line-height:1;cursor:pointer;padding:0 2px;margin-left:2px;">
+      ×
+    </button>
+  </div>
+
+  <!-- Messages -->
+  <div id="aiMessages"
+    style="height:320px;overflow-y:auto;padding:14px 14px 8px;display:flex;flex-direction:column;gap:8px;background:#fafcfe;flex-shrink:0;">
+    <div class="ai-msg ai-msg-bot">
+      <div class="ai-bubble ai-bubble-bot">
+        👋 Hi! I'm your CCS Admin AI. Ask me anything — sit-in stats, announcements, student info, or anything else!
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick chips -->
+  <div id="aiChips" style="padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap;border-top:1px solid #eef2f7;background:#fff;">
+    <button class="ai-chip" onclick="aiSend('How many students are currently sitting in?')">Sit-ins now?</button>
+    <button class="ai-chip" onclick="aiSend('Draft a lab silence announcement.')">Draft announcement</button>
+    <button class="ai-chip" onclick="aiSend('What are the most common sit-in purposes?')">Top purposes</button>
+  </div>
+
+  <!-- Input bar -->
+  <div style="padding:10px 12px;border-top:1px solid #eef2f7;background:#fff;display:flex;gap:7px;align-items:flex-end;">
+    <textarea id="aiInput2" rows="1" placeholder="Type a message… (Enter to send)"
+      style="flex:1;resize:none;border:1px solid #cddaec;border-radius:8px;padding:8px 11px;
+             font-family:inherit;font-size:13px;line-height:1.45;max-height:100px;overflow-y:auto;
+             background:#fafcfe;transition:border .15s;"
+      onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiSend();}"
+      oninput="this.style.height='auto';this.style.height=this.scrollHeight+'px';"></textarea>
+    <button onclick="aiSend()" id="aiSendBtn"
+      style="background:var(--blue-dk);color:#fff;border:none;border-radius:8px;
+             padding:8px 13px;font-size:18px;line-height:1;cursor:pointer;flex-shrink:0;
+             transition:background .15s;"
+      onmouseover="this.style.background='#1B5886'" onmouseout="this.style.background='var(--blue-dk)'">
+      ➤
+    </button>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════
      MODALS
 ══════════════════════════════════════ -->
 
@@ -1633,17 +1723,29 @@ thead th.sortable::after{
           </tr>
           <tr>
             <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Purpose:</td>
-            <td><input type="text" name="purpose" id="sitin_purpose"
-                       placeholder="e.g. C Programming" required
-                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
-                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
+            <td>
+              <select name="purpose" id="sitin_purpose" required
+                      style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                      onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'">
+                <option value="">— Select Purpose —</option>
+                <?php foreach(['C Programming','Java Programming','Python Programming','C# Programming','PHP Programming','Database (MySQL)','Web Development','Data Structures','Computer Networks','Operating Systems','System Administration','Thesis / Capstone','Research','Online Class','Others'] as $p): ?>
+                <option value="<?=$p?>"><?=$p?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Lab:</td>
-            <td><input type="text" name="lab" id="sitin_lab"
-                       placeholder="e.g. 524" required
-                       style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
-                       onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'"/></td>
+            <td>
+              <select name="lab" id="sitin_lab" required
+                      style="width:100%;padding:8px 11px;border:1px solid #cddaec;border-radius:6px;font-size:13px;font-family:inherit;color:#1a2e45;outline:none;"
+                      onfocus="this.style.borderColor='#1B5886'" onblur="this.style.borderColor='#cddaec'">
+                <option value="">— Select Lab —</option>
+                <?php foreach(['Lab 517','Lab 524','Lab 526','Lab 528','Lab 530','Lab 542','Lab 544'] as $l): ?>
+                <option value="<?=$l?>"><?=$l?></option>
+                <?php endforeach; ?>
+              </select>
+            </td>
           </tr>
           <tr>
             <td style="font-size:13px;color:#3d607f;font-weight:600;padding-right:14px;">Remaining Session:</td>
@@ -1808,11 +1910,21 @@ thead th.sortable::after{
         <div class="field-row">
           <div class="field">
             <label>Purpose *</label>
-            <input type="text" name="edit_sit_purpose" id="esitin_purpose" required/>
+            <select name="edit_sit_purpose" id="esitin_purpose" required>
+              <option value="">— Select Purpose —</option>
+              <?php foreach(['C Programming','Java Programming','Python Programming','C# Programming','PHP Programming','Database (MySQL)','Web Development','Data Structures','Computer Networks','Operating Systems','System Administration','Thesis / Capstone','Research','Online Class','Others'] as $p): ?>
+              <option value="<?=$p?>"><?=$p?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
           <div class="field">
             <label>Laboratory *</label>
-            <input type="text" name="edit_laboratory" id="esitin_lab" required/>
+            <select name="edit_laboratory" id="esitin_lab" required>
+              <option value="">— Select Lab —</option>
+              <?php foreach(['Lab 517','Lab 524','Lab 526','Lab 528','Lab 530','Lab 542','Lab 544'] as $l): ?>
+              <option value="<?=$l?>"><?=$l?></option>
+              <?php endforeach; ?>
+            </select>
           </div>
         </div>
         <div class="field">
@@ -1897,13 +2009,13 @@ function openEditStudent(id,idnum,fn,mn,ln,course,year,email,session){
 }
 
 // ── Open Sit-in modal (from search results) ──
-function openSitinFor(id, idnum, name, session){
+function openSitinFor(id, idnum, name, session, purpose, lab){
   document.getElementById('sitin_student_id').value = id;
   document.getElementById('sitin_id_number').value  = idnum;
   document.getElementById('sitin_name').value        = name;
   document.getElementById('sitin_session').value     = session;
-  document.getElementById('sitin_purpose').value     = '';
-  document.getElementById('sitin_lab').value         = '';
+  document.getElementById('sitin_purpose').value     = purpose || '';
+  document.getElementById('sitin_lab').value         = lab || '';
   const msg = document.getElementById('sitin_lookup_msg');
   msg.style.display = 'block';
   msg.style.color   = '#16a34a';
@@ -1956,6 +2068,8 @@ function lookupStudent(){
     document.getElementById('sitin_student_id').value = found.id;
     document.getElementById('sitin_name').value        = found.name;
     document.getElementById('sitin_session').value     = found.session;
+    if (found.sit_purpose) document.getElementById('sitin_purpose').value = found.sit_purpose;
+    if (found.laboratory)  document.getElementById('sitin_lab').value     = found.laboratory;
     msg.style.color   = '#16a34a';
     msg.textContent   = '✅ Registered student found — session will be deducted on Sit In.';
   } else {
@@ -1982,19 +2096,21 @@ function sitinSearchFn(q){
         <div style="font-size:13.5px;font-weight:700;color:#1a2e45;">${s.name}</div>
         <div style="font-size:12px;color:#8aaac8;margin-top:2px;">${s.id_number} &bull; ${s.course} &bull; Year ${s.year} &bull; <strong style="color:#1B5886;">${s.session} sessions</strong></div>
       </div>
-      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name.replace(/'/g,"\\'")}',${s.session})">Sit In</button>
+      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name.replace(/'/g,"\\'")}',${s.session},'${(s.sit_purpose||'').replace(/'/g,"\\'")}','${(s.laboratory||'').replace(/'/g,"\\'")}')">Sit In</button>
     </div>
   `).join('');
 }
 
 // ── Global search (searches student table in memory) ──
 const allStudents = <?php echo json_encode(array_map(fn($s)=>[
-  'id'       => $s['id'],
-  'id_number'=> $s['id_number'],
-  'name'     => $s['firstname'].' '.$s['middlename'].' '.$s['lastname'],
-  'course'   => $s['course'],
-  'year'     => $s['year_level'],
-  'session'  => $s['session'],
+  'id'         => $s['id'],
+  'id_number'  => $s['id_number'],
+  'name'       => $s['firstname'].' '.$s['middlename'].' '.$s['lastname'],
+  'course'     => $s['course'],
+  'year'       => $s['year_level'],
+  'session'    => $s['session'],
+  'sit_purpose'=> $s['sit_purpose'] ?? '',
+  'laboratory' => $s['laboratory'] ?? '',
 ], $students)); ?>;
 
 function globalSearchFn(q){
@@ -2011,7 +2127,7 @@ function globalSearchFn(q){
         <div style="font-size:13px;font-weight:600;">${s.name}</div>
         <div style="font-size:12px;color:#888;">${s.id_number} &bull; ${s.course} ${s.year}yr &bull; ${s.session} sessions</div>
       </div>
-      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name}',${s.session})">Sit In</button>
+      <button class="btn btn-blue btn-sm" onclick="openSitinFor(${s.id},'${s.id_number}','${s.name}',${s.session},'${(s.sit_purpose||'').replace(/'/g,"\\'")}','${(s.laboratory||'').replace(/'/g,"\\'")}')">Sit In</button>
     </div>
   `).join('');
 }
@@ -2075,7 +2191,18 @@ function filterRecords(q){
 function paginateRecords(){ recordsCurrentPage = 1; renderRecords(); }
 
 // Init on load
-window.addEventListener('load', renderRecords);
+window.addEventListener('load', function() {
+  renderRecords();
+
+  // Auto-open search modal if redirected from another page via Search nav link
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('open') === 'search') {
+    openModal('searchModal');
+    // Clean the URL so refresh doesn't re-open it
+    const cleanUrl = window.location.pathname + '?page=' + (params.get('page') || 'home');
+    history.replaceState(null, '', cleanUrl);
+  }
+});
 
 // ── Table filter ──
 function filterTable(tableId, q){
@@ -2121,8 +2248,6 @@ function buildChart(canvasId){
 buildChart('purposeChart');
 buildChart('reportsChart');
 buildChart('analyticsPieChart');
-
-// ── Analytics Bar Chart (Daily sit-ins) ──────────────────────
 (function(){
   var ctx = document.getElementById('analyticsBarChart');
   if (!ctx) return;
@@ -2143,6 +2268,130 @@ buildChart('analyticsPieChart');
     }
   });
 })();
+
+// ── AI Floating Widget ────────────────────────────────────────
+var aiHistory = [];
+var aiOpen = false;
+
+<?php
+$ai_purposes = implode(', ', array_map(fn($r) => $r['sit_purpose'].' ('.$r['cnt'].')', $purpose_rows));
+?>
+var aiSystemPrompt = "You are CCS Admin AI, a helpful assistant for the College of Computer Studies (CCS) sit-in lab management system.\n\n" +
+  "Live system data right now:\n" +
+  "- Students Registered: <?= $total_students ?>\n" +
+  "- Currently Sitting In: <?= $currently_sitin ?>\n" +
+  "- Total Sit-in Records: <?= $total_sitin ?>\n" +
+  "- Top sit-in purposes: <?= addslashes($ai_purposes) ?>\n\n" +
+  "You can answer ANY question the admin asks — not just about the system. Be helpful, concise, and friendly. " +
+  "For system-related questions, use the live data above. For general questions, answer them fully. " +
+  "Format responses in plain readable text.";
+
+function aiToggle() {
+  aiOpen = !aiOpen;
+  var panel = document.getElementById('aiPanel');
+  var fab   = document.getElementById('aiFab');
+  var dot   = document.getElementById('aiDot');
+  panel.style.display = aiOpen ? 'flex' : 'none';
+  fab.style.transform  = aiOpen ? 'rotate(20deg) scale(1.08)' : '';
+  dot.style.display    = 'none';
+  if (aiOpen) {
+    panel.style.flexDirection = 'column';
+    setTimeout(function(){ document.getElementById('aiInput2').focus(); }, 120);
+  }
+}
+
+async function aiSend(prefill) {
+  var input = document.getElementById('aiInput2');
+  var msg   = (prefill !== undefined ? prefill : input.value).trim();
+  if (!msg) return;
+
+  document.getElementById('aiChips').style.display = 'none';
+  input.value = '';
+  input.style.height = 'auto';
+
+  aiAppendMsg(msg, 'user');
+  aiHistory.push({ role: 'user', content: msg });
+
+  var typingId = aiAppendTyping();
+  document.getElementById('aiSendBtn').disabled = true;
+
+  try {
+    var res = await fetch('ai_proxy.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system: aiSystemPrompt,
+        messages: aiHistory
+      })
+    });
+    var data  = await res.json();
+    var reply = (data && data.content && data.content[0] && data.content[0].text)
+                ? data.content[0].text
+                : '⚠️ No response. Please try again.';
+    aiRemoveTyping(typingId);
+    aiAppendMsg(reply, 'bot');
+    aiHistory.push({ role: 'assistant', content: reply });
+
+    // Show unread dot if panel is closed
+    if (!aiOpen) document.getElementById('aiDot').style.display = 'block';
+
+  } catch(e) {
+    aiRemoveTyping(typingId);
+    aiAppendMsg('⚠️ Could not reach AI. Check your connection and try again.', 'bot');
+  }
+
+  document.getElementById('aiSendBtn').disabled = false;
+  if (aiOpen) document.getElementById('aiInput2').focus();
+}
+
+function aiAppendMsg(text, role) {
+  var wrap   = document.getElementById('aiMessages');
+  var row    = document.createElement('div');
+  row.className = 'ai-msg ai-msg-' + (role === 'user' ? 'user' : 'bot');
+  var bubble = document.createElement('div');
+  bubble.className = 'ai-bubble ai-bubble-' + (role === 'user' ? 'user' : 'bot');
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  wrap.appendChild(row);
+  wrap.scrollTop = wrap.scrollHeight;
+}
+
+function aiAppendTyping() {
+  var wrap = document.getElementById('aiMessages');
+  var id   = 'ait-' + Date.now();
+  var row  = document.createElement('div');
+  row.className = 'ai-msg ai-msg-bot';
+  row.id = id;
+  var bubble = document.createElement('div');
+  bubble.className = 'ai-bubble ai-bubble-typing';
+  bubble.textContent = 'Thinking…';
+  row.appendChild(bubble);
+  wrap.appendChild(row);
+  wrap.scrollTop = wrap.scrollHeight;
+  return id;
+}
+
+function aiRemoveTyping(id) {
+  var el = document.getElementById(id);
+  if (el) el.remove();
+}
+
+function aiClearChat() {
+  aiHistory = [];
+  document.getElementById('aiMessages').innerHTML =
+    '<div class="ai-msg ai-msg-bot"><div class="ai-bubble ai-bubble-bot">' +
+    '👋 Chat cleared! Ask me anything.' +
+    '</div></div>';
+  document.getElementById('aiChips').style.display = 'flex';
+}
+
+// FAB hover effect
+document.getElementById('aiFab').addEventListener('mouseenter', function(){
+  if (!aiOpen) this.style.transform = 'scale(1.12)';
+});
+document.getElementById('aiFab').addEventListener('mouseleave', function(){
+  if (!aiOpen) this.style.transform = '';
+});
 </script>
 </body>
 </html>

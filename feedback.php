@@ -78,13 +78,13 @@ function parseNotification($text) {
 function getNotificationIcon($message) {
     $msgLower = strtolower($message);
     if (strpos($msgLower, 'announcement') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
     } elseif (strpos($msgLower, 'feedback') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     } elseif (strpos($msgLower, 'logged out') !== false || strpos($msgLower, 'logout') !== false) {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
     } else {
-        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+        return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
     }
 }
 
@@ -121,16 +121,65 @@ $total_sitin = count($sit_ins);
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet"/>
 <style>
 :root{
-  --blue:#1B5886;--blue-dk:#003A6B;--blue-lt:#e8f4fb;--blue-bd:#89CFF1;
-  --gray-50:#f4f8fc;--gray-100:#e8f0f7;--gray-200:#cddaec;--gray-300:#b8c8dc;
-  --gray-400:#8aaac8;--gray-500:#6b8fae;--gray-600:#3d607f;
-  --gray-700:#2a4560;--gray-800:#1a2e45;--white:#fff;
-  --radius:8px;--radius-lg:12px;
-  --shadow:0 1px 3px rgba(0,58,107,0.08);--shadow-md:0 4px 20px rgba(0,58,107,0.11);
-  --green:#16a34a;--green-lt:#f0fdf4;
+  --blue:#1B5886;
+  --blue-dk:#003A6B;
+  --blue-lt:#e8f4fb;
+  --blue-bd:#89CFF1;
+  --gray-50:#f4f8fc;
+  --gray-100:#e8f0f7;
+  --gray-200:#cddaec;
+  --gray-300:#b8c8dc;
+  --gray-400:#8aaac8;
+  --gray-500:#6b8fae;
+  --gray-600:#3d607f;
+  --gray-700:#2a4560;
+  --gray-800:#1a2e45;
+  --white:#fff;
+  --radius:8px;
+  --radius-lg:12px;
+  --shadow:0 1px 3px rgba(0,58,107,0.08);
+  --shadow-md:0 4px 20px rgba(0,58,107,0.11);
+  --notif-bg:#ffffff;
+  --notif-border:#e2e8f0;
+  --notif-hover:#f8fafc;
+  --card-bg:#ffffff;
+  --card-border:#cddaec;
+  --text-primary:#1a2e45;
+  --text-secondary:#3d607f;
+  --text-muted:#6b8fae;
+  --border-light:#e8f0f7;
+  --feedback-count-color:#16a34a;
+}
+body.dark-mode {
+  --blue:#3b82f6;
+  --blue-dk:#003A6B;
+  --blue-lt:#1e293b;
+  --blue-bd:#3b82f6;
+  --gray-50:#0f172a;
+  --gray-100:#1e293b;
+  --gray-200:#334155;
+  --gray-300:#475569;
+  --gray-400:#64748b;
+  --gray-500:#94a3b8;
+  --gray-600:#cbd5e1;
+  --gray-700:#e2e8f0;
+  --gray-800:#f1f5f9;
+  --white:#1e293b;
+  --shadow:0 1px 3px rgba(0,0,0,0.5);
+  --shadow-md:0 10px 25px -5px rgba(0,0,0,0.5);
+  --notif-bg:#1e293b;
+  --notif-border:#334155;
+  --notif-hover:#334155;
+  --card-bg:#1e1e2e;
+  --card-border:#334155;
+  --text-primary:#f1f5f9;
+  --text-secondary:#cbd5e1;
+  --text-muted:#94a3b8;
+  --border-light:#334155;
+  --feedback-count-color:#3b82f6;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--gray-800);min-height:100vh;font-size:14px;}
+body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--gray-50);color:var(--text-primary);min-height:100vh;font-size:14px;transition:background 0.2s, color 0.2s;}
 
 nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 12px rgba(0,0,0,0.15);}
 .nav-brand{font-size:15px;font-weight:800;color:#fff;letter-spacing:-0.02em;}
@@ -140,6 +189,8 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .nav-links a.active{color:#89CFF1;font-weight:600;}
 .btn-logout{background:#e53e3e !important;color:#fff !important;font-weight:700 !important;border-radius:6px;padding:6px 16px !important;margin-left:6px;}
 .btn-logout:hover{background:#c53030 !important;}
+.btn-dark-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;transition:all .15s;margin-left:4px;}
+.btn-dark-toggle:hover{background:rgba(255,255,255,0.2);color:#fff;}
 
 /* NOTIFICATION BELL & DROPDOWN */
 .notif-wrap{position:relative;}
@@ -150,21 +201,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:.7;transform:scale(1.25);}}
 .notif-badge{background:#e53e3e;color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:99px;display:none;align-items:center;justify-content:center;padding:0 4px;}
 .notif-badge.show{display:flex;}
-
-.notif-dropdown{
-  display:none;
-  position:absolute;
-  top:calc(100% + 8px);
-  right:0;
-  background:var(--white);
-  border:1px solid var(--gray-200);
-  border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-md);
-  width:450px;
-  max-width:calc(100vw - 40px);
-  z-index:300;
-  overflow:hidden;
-}
+.notif-dropdown{display:none;position:absolute;top:calc(100% + 8px);right:0;background:var(--notif-bg);border:1px solid var(--notif-border);border-radius:var(--radius-lg);box-shadow:var(--shadow-md);width:450px;max-width:calc(100vw - 40px);z-index:300;overflow:hidden;}
 .notif-dropdown.open{display:block;}
 .notif-head{background:var(--blue-dk);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
 .notif-head-title{color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;}
@@ -172,127 +209,68 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .notif-mark{background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.3);color:#fff;font-size:11px;font-weight:600;font-family:'Plus Jakarta Sans',sans-serif;padding:4px 10px;border-radius:5px;cursor:pointer;transition:background .15s;}
 .notif-mark:hover{background:rgba(255,255,255,0.3);}
 .notif-caught{font-size:11px;color:rgba(255,255,255,0.55);display:flex;align-items:center;gap:5px;}
-
-.notif-list{
-  max-height:500px;
-  overflow-y:auto;
-  overflow-x:hidden;
-  background:var(--white);
-}
+.notif-list{max-height:500px;overflow-y:auto;overflow-x:hidden;background:var(--notif-bg);}
 .notif-list::-webkit-scrollbar{width:4px;}
 .notif-list::-webkit-scrollbar-track{background:var(--gray-100);}
 .notif-list::-webkit-scrollbar-thumb{background:var(--gray-300);border-radius:99px;}
-
-.notif-item{
-  display:flex;
-  gap:14px;
-  padding:16px 18px;
-  border-bottom:1px solid var(--gray-100);
-  transition:background .15s;
-  text-decoration:none;
-  color:inherit;
-  cursor:pointer;
-  width:100%;
-}
+.notif-item{display:flex;gap:14px;padding:16px 18px;border-bottom:1px solid var(--notif-border);transition:background .15s;text-decoration:none;color:inherit;cursor:pointer;width:100%;}
 .notif-item:first-child{padding-top:16px;}
 .notif-item:last-child{border-bottom:none;padding-bottom:16px;}
-.notif-item:hover{background:var(--gray-50);}
+.notif-item:hover{background:var(--notif-hover);}
 .notif-item.unread{background:var(--blue-lt);}
-.notif-item.unread:hover{background:#dceef9;}
-
-.notif-icon{
-  display:inline-flex;
-  align-items:flex-start;
-  justify-content:center;
-  width:36px;
-  flex-shrink:0;
-}
-.notif-icon svg{
-  width:20px;
-  height:20px;
-  stroke:#4B5563;
-  stroke-width:1.8;
-  fill:none;
-}
-
-.notif-content{
-  flex:1;
-  min-width:0;
-}
-.notif-title{
-  font-size:14px;
-  color:var(--gray-800);
-  font-weight:700;
-  margin-bottom:6px;
-  line-height:1.4;
-  word-break:break-word;
-  white-space:normal;
-}
-.notif-desc{
-  font-size:13px;
-  color:var(--gray-600);
-  line-height:1.5;
-  word-break:break-word;
-  white-space:normal;
-  margin-bottom:8px;
-}
-.notif-desc br{
-  display:block;
-  content:"";
-  margin-top:4px;
-}
-.notif-date{
-  font-size:11px;
-  color:var(--gray-400);
-  display:flex;
-  align-items:center;
-  gap:6px;
-  margin-top:4px;
-}
-.notif-date::before{
-  content:"";
-  display:inline-block;
-  width:4px;
-  height:4px;
-  background:var(--gray-400);
-  border-radius:50%;
-}
-.notif-empty{padding:48px 24px;text-align:center;font-size:13px;color:var(--gray-400);font-style:italic;}
+body.dark-mode .notif-item.unread{background:#1e3a5f;}
+body.dark-mode .notif-item.unread:hover{background:#2d4a6e;}
+.notif-icon{display:inline-flex;align-items:flex-start;justify-content:center;width:36px;flex-shrink:0;}
+.notif-icon svg{width:20px;height:20px;stroke:var(--text-secondary);stroke-width:1.8;fill:none;}
+.notif-content{flex:1;min-width:0;}
+.notif-title{font-size:14px;color:var(--text-primary);font-weight:700;margin-bottom:6px;line-height:1.4;word-break:break-word;white-space:normal;}
+.notif-desc{font-size:13px;color:var(--text-secondary);line-height:1.5;word-break:break-word;white-space:normal;margin-bottom:8px;}
+.notif-date{font-size:11px;color:var(--text-muted);display:flex;align-items:center;gap:6px;margin-top:4px;}
+.notif-date::before{content:"";display:inline-block;width:4px;height:4px;background:var(--text-muted);border-radius:50%;}
+.notif-empty{padding:48px 24px;text-align:center;font-size:13px;color:var(--text-muted);font-style:italic;}
 
 /* PAGE STYLES */
 .page-body{max-width:1200px;margin:0 auto;padding:30px 20px 50px;}
-.page-title{font-size:24px;font-weight:800;color:var(--blue-dk);margin-bottom:24px;text-align:center;}
+.page-title{font-size:24px;font-weight:800;color:var(--text-primary);margin-bottom:24px;text-align:center;}
 .content-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
-.card{background:var(--white);border:1px solid var(--gray-200);border-radius:var(--radius-lg);box-shadow:var(--shadow);overflow:hidden;}
-.card-head{background:var(--blue);padding:12px 16px;display:flex;align-items:center;gap:8px;}
+.card{background:var(--card-bg);border:1px solid var(--card-border);border-radius:var(--radius-lg);box-shadow:var(--shadow);overflow:hidden;}
+.card-head{background:#1B5886;padding:12px 16px;display:flex;align-items:center;gap:8px;}
 .card-head h2{color:#fff;font-size:13px;font-weight:700;}
 .card-body{padding:16px;}
-.feedback-item{padding:14px;border-bottom:1px solid var(--gray-100);}
+.feedback-item{padding:14px;border-bottom:1px solid var(--border-light);}
 .feedback-item:last-child{border-bottom:none;}
-.feedback-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.feedback-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:6px;}
 .feedback-admin{font-size:13px;font-weight:700;color:var(--blue);display:flex;align-items:center;gap:6px;}
+body.dark-mode .feedback-admin{color:#3b82f6;}
 .feedback-admin svg{flex-shrink:0;}
-.feedback-date{font-size:11px;color:var(--gray-400);}
-.feedback-sitin-ref{font-size:11px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:4px;padding:6px 8px;margin-bottom:8px;display:inline-block;}
+.feedback-date{font-size:11px;color:var(--text-muted);}
+.feedback-sitin-ref{font-size:11px;background:var(--gray-100);border:1px solid var(--border-light);border-radius:4px;padding:6px 8px;margin-bottom:8px;display:inline-block;}
 .feedback-sitin-ref strong{color:var(--blue-dk);}
-.feedback-content{font-size:13px;color:var(--gray-600);line-height:1.6;word-break:break-word;}
+body.dark-mode .feedback-sitin-ref strong{color:#3b82f6;}
+.feedback-content{font-size:13px;color:var(--text-secondary);line-height:1.6;word-break:break-word;}
 .stats-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
-.stat-box{background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);padding:14px;text-align:center;}
-.stat-label{font-size:11px;font-weight:600;color:var(--gray-400);text-transform:uppercase;}
-.stat-value{font-size:28px;font-weight:800;color:var(--blue-dk);margin-top:4px;}
-.sitin-item{padding:10px;background:var(--gray-50);border:1px solid var(--gray-200);border-radius:var(--radius);margin-bottom:8px;}
+.stat-box{background:var(--gray-100);border:1px solid var(--border-light);border-radius:var(--radius);padding:14px;text-align:center;}
+.stat-label{font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;}
+.stat-value{font-size:28px;font-weight:800;color:var(--text-primary);margin-top:4px;}
+.stat-box:first-child .stat-value{color:var(--text-primary);}
+.stat-box:last-child .stat-value{color:var(--feedback-count-color);}
+.sitin-item{padding:10px;background:var(--gray-100);border:1px solid var(--border-light);border-radius:var(--radius);margin-bottom:8px;}
 .sitin-item:last-child{margin-bottom:0;}
 .sitin-info{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
 .sitin-left{flex:1;}
-.sitin-purpose{font-size:13px;font-weight:700;color:var(--blue-dk);}
-.sitin-detail{font-size:12px;color:var(--gray-600);margin-top:3px;display:flex;align-items:center;gap:4px;}
+.sitin-purpose{font-size:13px;font-weight:700;color:var(--text-primary);}
+.sitin-detail{font-size:12px;color:var(--text-muted);margin-top:3px;display:flex;align-items:center;gap:4px;}
 .sitin-detail svg{flex-shrink:0;}
-.sitin-status{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;background:#dcfce7;color:#15803d;}
-.sitin-status.completed{background:#fef3c7;color:#b45309;}
-.empty-state{text-align:center;padding:30px 20px;color:var(--gray-400);}
+.status-active{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:30px;font-size:11px;font-weight:700;background:#e8f4fb;color:#1B5886;border:1px solid #89CFF1;}
+.status-completed{display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:30px;font-size:11px;font-weight:700;background:#f1f5f9;color:#64748b;border:1px solid #cbd5e1;}
+body.dark-mode .status-active{background:#1e3a5f;color:#93c5fd;border-color:#3b82f6;}
+body.dark-mode .status-completed{background:#334155;color:#94a3b8;border-color:#475569;}
+.status-dot{width:7px;height:7px;border-radius:50%;background:currentColor;}
+.empty-state{text-align:center;padding:30px 20px;color:var(--text-muted);}
 .empty-icon{margin-bottom:12px;display:flex;justify-content:center;}
 .empty-text{font-size:14px;font-weight:500;}
 .feedback-ok{font-size:11px;color:#16a34a;margin-top:8px;font-weight:600;display:flex;align-items:center;gap:4px;}
+body.dark-mode .feedback-ok{color:#22c55e;}
 
 @media(max-width:900px){.content-grid{grid-template-columns:1fr;}}
 @media(max-width:550px){
@@ -302,17 +280,6 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
   .notif-title{font-size:13px;}
   .notif-desc{font-size:12px;}
 }
-
-.btn-dark-toggle{background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:rgba(255,255,255,0.75);border-radius:6px;padding:5px 9px;cursor:pointer;display:flex;align-items:center;transition:all .15s;}
-.btn-dark-toggle:hover{background:rgba(255,255,255,0.2);color:#fff;}
-body.dark-mode{background:#0f172a;color:#e2e8f0;}
-body.dark-mode nav{background:#020617;}
-body.dark-mode .card{background:#1e293b;border-color:#334155;}
-body.dark-mode .card-head{background:#1B5886;}
-body.dark-mode table thead tr{background:#1B5886;}
-body.dark-mode tbody td{color:#cbd5e1;}
-body.dark-mode tbody tr{border-color:#334155;}
-body.dark-mode tbody tr:hover{background:#273549;}
 </style>
 </head>
 <body>
@@ -369,7 +336,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
                 $isUnread = $n['is_read'] == 0;
                 $iconSvg = getNotificationIcon($n['message']);
               ?>
-                <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $isUnread ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>" data-read="<?= $n['is_read'] ?>">
+                <a href="notification_handler.php?id=<?= (int)$n['id'] ?>" class="notif-item <?= $isUnread ? 'unread' : 'read' ?>" data-id="<?= (int)$n['id'] ?>">
                   <div class="notif-icon"><?= $iconSvg ?></div>
                   <div class="notif-content">
                     <div class="notif-title"><?= htmlspecialchars($parsed['title']) ?></div>
@@ -391,7 +358,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
     <a href="feedback.php" class="active">Feedback</a>
     <a href="reservation.php">Reservation</a>
     <a href="software.php">Lab Software</a>
-    <button onclick="toggleDarkMode()" class="btn-dark-toggle" id="darkToggle" title="Toggle dark mode"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
+    <button onclick="toggleDarkMode()" class="btn-dark-toggle" id="darkToggle" title="Toggle dark mode"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg></button>
     <a href="logout.php" class="btn-logout">Log out</a>
   </div>
 </nav>
@@ -405,7 +372,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
     <div>
       <div class="card">
         <div class="card-head">
-          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           <h2>Feedback from Admin (<?= $total_feedback ?>)</h2>
         </div>
         <div class="card-body">
@@ -428,10 +395,10 @@ body.dark-mode tbody tr:hover{background:#273549;}
           <?php endforeach; else: ?>
           <div class="empty-state">
             <div class="empty-icon">
-              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--gray-400)" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+              <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="var(--text-muted)" stroke-width="1.5"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
             </div>
             <div class="empty-text">No feedback yet</div>
-            <p style="font-size:12px;margin-top:6px;color:var(--gray-400);">Admin feedback will appear here when they review your sit-in records.</p>
+            <p style="font-size:12px;margin-top:6px;color:var(--text-muted);">Admin feedback will appear here when they review your sit-in records.</p>
           </div>
           <?php endif; ?>
         </div>
@@ -442,7 +409,7 @@ body.dark-mode tbody tr:hover{background:#273549;}
     <div>
       <div class="card">
         <div class="card-head">
-          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;stroke-linecap:round;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          <svg style="width:15px;height:15px;stroke:#fff;fill:none;stroke-width:2;" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
           <h2>Sit-in Summary</h2>
         </div>
         <div class="card-body">
@@ -453,14 +420,15 @@ body.dark-mode tbody tr:hover{background:#273549;}
             </div>
             <div class="stat-box">
               <div class="stat-label">Feedback Received</div>
-              <div class="stat-value" style="color:#16a34a;"><?= $total_feedback ?></div>
+              <div class="stat-value"><?= $total_feedback ?></div>
             </div>
           </div>
 
-          <h3 style="font-size:13px;font-weight:700;color:var(--blue-dk);margin-bottom:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--gray-100);">Recent Sit-ins</h3>
+          <h3 style="font-size:13px;font-weight:700;color:var(--text-primary);margin-bottom:12px;margin-top:16px;padding-top:16px;border-top:1px solid var(--border-light);">Recent Sit-ins</h3>
           
           <?php if ($sit_ins): foreach ($sit_ins as $sit): 
             $has_feedback = count(array_filter($feedback_records, fn($f) => $f['sitin_id'] == $sit['id'])) > 0;
+            $isActive = empty($sit['logout_time']);
           ?>
           <div class="sitin-item">
             <div class="sitin-info">
@@ -475,28 +443,22 @@ body.dark-mode tbody tr:hover{background:#273549;}
                   <?= date('M d, Y', strtotime($sit['date'])) ?>
                 </div>
               </div>
-              <?php if (!empty($sit['logout_time'])): ?>
-              <span class="sitin-status completed">
-                <svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Logged Out
-              </span>
+              <?php if ($isActive): ?>
+              <span class="status-active"><span class="status-dot"></span>Active</span>
               <?php else: ?>
-              <span class="sitin-status">
-                <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="5"/></svg>
-                Active
-              </span>
+              <span class="status-completed">✓ Completed</span>
               <?php endif; ?>
             </div>
             <?php if ($has_feedback): ?>
             <div class="feedback-ok">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="#16a34a" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
               Feedback available
             </div>
             <?php endif; ?>
           </div>
           <?php endforeach; else: ?>
           <div class="empty-state">
-            <p style="font-size:13px;color:var(--gray-400);">No sit-in records yet.</p>
+            <p style="font-size:13px;color:var(--text-muted);">No sit-in records yet.</p>
           </div>
           <?php endif; ?>
         </div>
@@ -507,105 +469,35 @@ body.dark-mode tbody tr:hover{background:#273549;}
 </div>
 
 <script>
-// FIXED: Proper time difference calculation
+var notifOpen = false;
+
 function relTime(ts) {
   if (!ts || ts <= 0) return '';
   var now = Math.floor(Date.now() / 1000);
   var diff = now - ts;
-  
   if (diff < 0) return 'Just now';
   if (diff < 60) return 'Just now';
-  if (diff < 3600) {
-    var minutes = Math.floor(diff / 60);
-    return minutes + ' minute' + (minutes > 1 ? 's' : '') + ' ago';
-  }
-  if (diff < 86400) {
-    var hours = Math.floor(diff / 3600);
-    return hours + ' hour' + (hours > 1 ? 's' : '') + ' ago';
-  }
-  if (diff < 604800) {
-    var days = Math.floor(diff / 86400);
-    return days + ' day' + (days > 1 ? 's' : '') + ' ago';
-  }
-  var d = new Date(ts * 1000);
-  return d.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
+  if (diff < 3600) { var m = Math.floor(diff/60); return m + ' minute' + (m > 1 ? 's' : '') + ' ago'; }
+  if (diff < 86400) { var h = Math.floor(diff/3600); return h + ' hour' + (h > 1 ? 's' : '') + ' ago'; }
+  if (diff < 604800) { var d = Math.floor(diff/86400); return d + ' day' + (d > 1 ? 's' : '') + ' ago'; }
+  var dt = new Date(ts * 1000);
+  return dt.toLocaleDateString('en-US', {month:'short', day:'numeric', year:'numeric'});
 }
 
 function refreshTimestamps() {
   document.querySelectorAll('.notif-date[data-ts]').forEach(function(el) {
     var ts = parseInt(el.getAttribute('data-ts'), 10);
-    if (!isNaN(ts) && ts > 0) {
-      el.textContent = relTime(ts);
-    }
+    if (!isNaN(ts) && ts > 0) el.textContent = relTime(ts);
   });
 }
 
-// REAL-TIME NOTIFICATION POLLING (No Page Refresh)
 var currentUnreadCount = <?= $unread_count ?>;
 
-function pollNotifications() {
-  fetch('notification_ajax.php?action=fetch')
-    .then(function(response) { return response.json(); })
-    .then(function(data) {
-      if (!data || !data.notifications) return;
-      
-      var container = document.getElementById('notifListContainer');
-      var badge = document.getElementById('notifBadge');
-      var redDot = document.getElementById('redDot');
-      var newPill = document.getElementById('newNotifPill');
-      var headRight = document.getElementById('notifHeadRight');
-      
-      currentUnreadCount = data.notifications.filter(function(n) { return parseInt(n.is_read) === 0; }).length;
-      
-      if (currentUnreadCount > 0) {
-        badge.textContent = currentUnreadCount > 99 ? '99+' : currentUnreadCount;
-        badge.classList.add('show');
-        if (redDot) redDot.style.display = '';
-        if (newPill) { newPill.style.display = ''; newPill.textContent = currentUnreadCount + ' new'; }
-        headRight.innerHTML = '<form method="POST" action="feedback.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
-      } else {
-        badge.classList.remove('show');
-        badge.textContent = '';
-        if (redDot) redDot.style.display = 'none';
-        if (newPill) newPill.style.display = 'none';
-        headRight.innerHTML = '<span class="notif-caught"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All caught up</span>';
-      }
-      
-      if (data.notifications.length > 0) {
-        var html = '';
-        data.notifications.forEach(function(n) {
-          var parsed = parseNotificationJS(n.message);
-          var iconSvg = getNotificationIconJS(n.message);
-          var isUnreadClass = parseInt(n.is_read) === 0 ? 'unread' : 'read';
-          html += '<a href="notification_handler.php?id=' + n.id + '" class="notif-item ' + isUnreadClass + '" data-id="' + n.id + '">' +
-                  '<div class="notif-icon">' + iconSvg + '</div>' +
-                  '<div class="notif-content">' +
-                  '<div class="notif-title">' + escapeHtml(parsed.title) + '</div>' +
-                  (parsed.description ? '<div class="notif-desc">' + escapeHtml(parsed.description).replace(/\n/g, '<br>') + '</div>' : '') +
-                  '<div class="notif-date" data-ts="' + Math.floor(new Date(n.created_at.replace(' ', 'T')).getTime() / 1000) + '"></div>' +
-                  '</div>' +
-                  '</a>';
-        });
-        container.innerHTML = html;
-      } else {
-        container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
-      }
-      
-      refreshTimestamps();
-    })
-    .catch(function(error) {
-      console.log('Polling error:', error);
-    });
-}
-
-// JavaScript versions of PHP helper functions
 function parseNotificationJS(text) {
   text = text.trim();
   text = text.replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{FE00}-\u{FEFF}\u{1F300}-\u{1F9FF}\s]+/u, '');
-  
   if (text.indexOf('New announcement from') === 0) {
-    var parts = text.split(':');
-    return { title: parts[0], description: parts[1] ? parts[1].trim() : '' };
+    var parts = text.split(':'); return { title: parts[0], description: parts[1] ? parts[1].trim() : '' };
   }
   if (text.indexOf('feedback') !== false) {
     var cleanText = text.replace(/^[💬]*\s*You received feedback from admin:\s*/i, '');
@@ -621,15 +513,10 @@ function parseNotificationJS(text) {
 
 function getNotificationIconJS(message) {
   var msgLower = message.toLowerCase();
-  if (msgLower.indexOf('announcement') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-  } else if (msgLower.indexOf('feedback') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  } else if (msgLower.indexOf('logged out') !== false || msgLower.indexOf('logout') !== false) {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
-  } else {
-    return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#4B5563" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
-  }
+  if (msgLower.indexOf('announcement') !== false) return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M22 17H2a3 3 0 0 0 3-3V9a7 7 0 0 1 14 0v5a3 3 0 0 0 3 3z"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
+  if (msgLower.indexOf('feedback') !== false) return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  if (msgLower.indexOf('logged out') !== false || msgLower.indexOf('logout') !== false) return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>';
+  return '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>';
 }
 
 function escapeHtml(text) {
@@ -637,21 +524,62 @@ function escapeHtml(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// Initial load
-refreshTimestamps();
+function pollNotifications() {
+  fetch('notification_ajax.php?action=fetch')
+    .then(function(response) { return response.json(); })
+    .then(function(data) {
+      if (!data || !data.notifications) return;
+      var container = document.getElementById('notifListContainer');
+      var badge = document.getElementById('notifBadge');
+      var redDot = document.getElementById('redDot');
+      var newPill = document.getElementById('newNotifPill');
+      var headRight = document.getElementById('notifHeadRight');
+      currentUnreadCount = data.notifications.filter(function(n) { return parseInt(n.is_read) === 0; }).length;
+      if (currentUnreadCount > 0) {
+        badge.textContent = currentUnreadCount > 99 ? '99+' : currentUnreadCount;
+        badge.classList.add('show');
+        if (redDot) redDot.style.display = '';
+        if (newPill) { newPill.style.display = ''; newPill.textContent = currentUnreadCount + ' new'; }
+        headRight.innerHTML = '<form method="POST" action="feedback.php" style="margin:0;"><input type="hidden" name="mark_notif_read" value="1"/><button type="submit" class="notif-mark">Mark all read</button></form>';
+      } else {
+        badge.classList.remove('show');
+        badge.textContent = '';
+        if (redDot) redDot.style.display = 'none';
+        if (newPill) newPill.style.display = 'none';
+        headRight.innerHTML = '<span class="notif-caught"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>All caught up</span>';
+      }
+      if (data.notifications.length > 0) {
+        var html = '';
+        data.notifications.forEach(function(n) {
+          var parsed = parseNotificationJS(n.message);
+          var iconSvg = getNotificationIconJS(n.message);
+          var isUnreadClass = parseInt(n.is_read) === 0 ? 'unread' : 'read';
+          html += '<a href="notification_handler.php?id=' + n.id + '" class="notif-item ' + isUnreadClass + '" data-id="' + n.id + '">' +
+                  '<div class="notif-icon">' + iconSvg + '</div>' +
+                  '<div class="notif-content">' +
+                  '<div class="notif-title">' + escapeHtml(parsed.title) + '</div>' +
+                  (parsed.description ? '<div class="notif-desc">' + escapeHtml(parsed.description).replace(/\n/g, '<br>') + '</div>' : '') +
+                  '<div class="notif-date" data-ts="' + Math.floor(new Date(n.created_at.replace(' ', 'T')).getTime() / 1000) + '"></div>' +
+                  '</div></a>';
+        });
+        container.innerHTML = html;
+      } else {
+        container.innerHTML = '<div class="notif-empty">No notifications yet.</div>';
+      }
+      refreshTimestamps();
+    })
+    .catch(function(error) { console.log('Polling error:', error); });
+}
 
-// Start polling every 15 seconds
+refreshTimestamps();
 setInterval(refreshTimestamps, 30000);
 setInterval(pollNotifications, 15000);
-pollNotifications(); // Initial poll
+pollNotifications();
 
-var notifOpen = false;
 function toggleNotif() {
   notifOpen = !notifOpen;
   document.getElementById('notifDropdown').classList.toggle('open', notifOpen);
-  if (notifOpen) {
-    refreshTimestamps();
-  }
+  if (notifOpen) refreshTimestamps();
 }
 document.addEventListener('click', function(e) {
   var wrap = document.querySelector('.notif-wrap');
@@ -661,13 +589,15 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// ── Dark Mode ──────────────────────────────────────────────────
-var SUN_SVG2  = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
-var MOON_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+// Dark Mode
+var SUN_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>';
+var MOON_SVG2 = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
 function applyDarkMode(on) {
   document.body.classList.toggle('dark-mode', on);
   var btn = document.getElementById('darkToggle');
   if (btn) btn.innerHTML = on ? SUN_SVG2 : MOON_SVG2;
+  if (notifOpen) document.getElementById('notifDropdown').classList.add('open');
 }
 function toggleDarkMode() {
   var on = !document.body.classList.contains('dark-mode');
@@ -675,7 +605,6 @@ function toggleDarkMode() {
   applyDarkMode(on);
 }
 if (localStorage.getItem('darkMode') === '1') applyDarkMode(true);
-
 </script>
 </body>
 </html>
