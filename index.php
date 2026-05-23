@@ -1,9 +1,71 @@
 <?php
 session_start();
 require_once 'db.php';
+
 if (isset($_SESSION['logged_in']) && $_SESSION['logged_in'] === true) {
     header('Location: Homepage.php'); exit;
 }
+if (isset($_SESSION['admin_logged_in']) && $_SESSION['admin_logged_in'] === true) {
+    header('Location: admin_dashboard.php'); exit;
+}
+
+$error = '';
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['login_submit'])) {
+    $username = trim($_POST['username'] ?? '');
+    $password = $_POST['password'] ?? '';
+
+    // Clear any previous session so stale data never affects the redirect
+    session_unset();
+    session_destroy();
+    session_start();
+    session_regenerate_id(true);
+
+    $authenticated = false;
+
+    // 1. Try admin (checks admins table only)
+    $stmt = $pdo->prepare("SELECT * FROM admins WHERE username = ? LIMIT 1");
+    $stmt->execute([$username]);
+    $admin = $stmt->fetch();
+
+    if ($admin) {
+        // Support both hashed and plain-text admin passwords
+        $pass_ok = password_verify($password, $admin['password'])
+                   || ($password === $admin['password']);
+
+        if ($pass_ok) {
+            $_SESSION['admin_logged_in'] = true;
+            $_SESSION['admin_id']        = $admin['id'];
+            $_SESSION['admin_username']  = $admin['username'];
+            unset($_SESSION['logged_in'], $_SESSION['student_id'], $_SESSION['student_name']);
+            $authenticated = true;
+            header('Location: admin_dashboard.php');
+            exit;
+        }
+    }
+
+    // 2. Try student ONLY if admin check did not match
+    if (!$authenticated) {
+        $stmt = $pdo->prepare("SELECT * FROM students WHERE id_number = ? LIMIT 1");
+        $stmt->execute([$username]);
+        $student = $stmt->fetch();
+
+        if ($student && password_verify($password, $student['password'])) {
+            $_SESSION['logged_in']    = true;
+            $_SESSION['student_id']   = $student['id'];
+            $_SESSION['student_name'] = $student['firstname'] . ' ' . $student['lastname'];
+            unset($_SESSION['admin_logged_in'], $_SESSION['admin_id'], $_SESSION['admin_username']);
+            $authenticated = true;
+            header('Location: Homepage.php');
+            exit;
+        }
+    }
+
+    if (!$authenticated) {
+        $error = 'Invalid credentials. Please check your ID/username and password.';
+    }
+}
+
 $announcements = $pdo->query("SELECT * FROM announcements ORDER BY created_at DESC")->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -29,8 +91,6 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
 .btn-login{border:1px solid rgba(255,255,255,0.3);}
 .btn-register{background:var(--blue);color:#fff !important;font-weight:700 !important;}
 .btn-register:hover{background:#154f7a !important;}
-.btn-admin{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.55) !important;font-size:12px !important;margin-left:4px;}
-.btn-admin:hover{background:rgba(255,255,255,0.13) !important;color:#fff !important;}
 .nav-dropdown{position:relative;}
 .nav-dropdown>a{display:flex;align-items:center;gap:4px;}
 .chevron{font-size:10px;color:rgba(255,255,255,0.4);transition:transform .2s;}
@@ -75,6 +135,28 @@ footer{background:var(--blue-dk);text-align:center;padding:18px;font-size:12px;c
 footer a{color:rgba(255,255,255,0.45);text-decoration:none;}
 footer a:hover{color:rgba(255,255,255,0.8);}
 @media(max-width:600px){nav{padding:0 16px;}.nav-brand-sub{display:none;}}
+/* MODAL */
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,20,40,0.55);backdrop-filter:blur(3px);z-index:500;align-items:center;justify-content:center;}
+.modal-overlay.open{display:flex;}
+.modal{background:var(--white);border-radius:var(--radius-lg);border:1px solid var(--gray-200);box-shadow:0 20px 60px rgba(0,30,60,0.25);width:100%;max-width:380px;margin:16px;overflow:hidden;animation:popIn .18s ease;}
+@keyframes popIn{from{transform:scale(0.95);opacity:0;}to{transform:scale(1);opacity:1;}}
+.modal-head{background:var(--blue);padding:16px 20px;display:flex;align-items:center;justify-content:space-between;}
+.modal-head h2{color:#fff;font-size:14px;font-weight:700;}
+.modal-head p{color:rgba(255,255,255,0.6);font-size:11.5px;margin-top:2px;}
+.modal-close{background:none;border:none;color:rgba(255,255,255,0.6);font-size:18px;cursor:pointer;line-height:1;padding:2px 6px;border-radius:4px;}
+.modal-close:hover{color:#fff;background:rgba(255,255,255,0.1);}
+.modal-body{padding:22px 20px 20px;}
+.form-group{margin-bottom:15px;}
+label{display:block;font-size:12px;font-weight:600;color:var(--gray-600);margin-bottom:5px;}
+input[type=text],input[type=password]{width:100%;border:1px solid var(--gray-200);border-radius:var(--radius);padding:10px 12px;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;color:var(--gray-800);outline:none;transition:border .15s,box-shadow .15s;}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px rgba(27,88,134,0.1);}
+.alert-error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:var(--radius);padding:9px 12px;font-size:12.5px;font-weight:500;margin-bottom:14px;display:flex;align-items:center;gap:7px;}
+.btn-submit{width:100%;padding:11px;border:none;border-radius:var(--radius);background:var(--blue);color:#fff;font-family:'Plus Jakarta Sans',sans-serif;font-size:13.5px;font-weight:700;cursor:pointer;transition:background .15s;}
+.btn-submit:hover{background:var(--blue-dk);}
+.modal-footer{text-align:center;padding:0 20px 18px;font-size:12px;color:var(--gray-400);}
+.modal-footer a{color:var(--blue);font-weight:600;text-decoration:none;}
+.modal-footer a:hover{text-decoration:underline;}
+.modal-divider{height:1px;background:var(--gray-100);margin:0 20px 14px;}
 </style>
 </head>
 <body>
@@ -87,32 +169,78 @@ footer a:hover{color:rgba(255,255,255,0.8);}
     <a href="index.php" class="active">Home</a>
     <div class="nav-dropdown">
       <a href="#">Community <span class="chevron">▾</span></a>
+      <div class="dropdown-menu">
+        <a href="#">Forums</a>
+        <a href="#">Resources</a>
+      </div>
     </div>
     <a href="#">About</a>
-    <a href="login.php" class="btn-login">Login</a>
+    <a href="#" class="btn-login" onclick="openModal();return false;">Login</a>
     <a href="register.php" class="btn-register">Register</a>
-    <a href="admin.php" class="btn-admin">🔒 Admin</a>
   </div>
 </nav>
+
+<!-- LOGIN MODAL -->
+<div class="modal-overlay" id="loginModal" onclick="handleOverlayClick(event)">
+  <div class="modal">
+    <div class="modal-head">
+      <div>
+        <h2>Sign In</h2>
+        <p>Student ID or Admin username</p>
+      </div>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <?php if ($error): ?>
+        <div class="alert-error">⚠️ <?= htmlspecialchars($error) ?></div>
+      <?php endif; ?>
+      <form method="POST" action="index.php">
+        <input type="hidden" name="login_submit" value="1"/>
+        <div class="form-group">
+          <label for="username">ID Number / Username</label>
+          <input type="text" id="username" name="username"
+                 value="<?= htmlspecialchars($_POST['username'] ?? '') ?>"
+                 autocomplete="username" required autofocus/>
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password"
+                 placeholder="Enter your password"
+                 autocomplete="current-password" required/>
+        </div>
+        <button type="submit" class="btn-submit">Login</button>
+      </form>
+    </div>
+    <div class="modal-divider"></div>
+    <div class="modal-footer">
+      No account yet? <a href="register.php">Register here</a>
+    </div>
+  </div>
+</div>
+
 <div class="hero">
   <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRy4J1dSoQ3EKgOPNlwRe_8LCU0oHWbN5z8qQ&s" alt="CCS"/>
   <h1>College of Computer Studies</h1>
   <p>University of Cebu · Sit-in Monitoring System</p>
   <div class="hero-pills"><span class="pill">Inceptum</span><span class="pill">Innovatio</span><span class="pill">Muneris</span><span class="pill">Est. 1983</span></div>
   <div class="hero-btns">
-    <a href="login.php" class="btn-hero btn-solid">Login</a>
+    <a href="#" class="btn-hero btn-solid" onclick="openModal();return false;">Login</a>
     <a href="register.php" class="btn-hero btn-outline-hero">Create Account</a>
   </div>
 </div>
+
 <div class="home-body">
   <div class="card">
-    <div class="card-head"><h2>📢 Announcements</h2><span class="card-badge"><?= count($announcements) ?></span></div>
+    <div class="card-head">
+      <h2>📢 Announcements</h2>
+      <span class="card-badge"><?= count($announcements) ?></span>
+    </div>
     <div class="ann-list">
       <?php if ($announcements): foreach ($announcements as $ann): ?>
       <div class="ann-item">
         <div class="ann-meta">
           <div class="ann-dot">CA</div>
-          <span class="ann-author"><?= htmlspecialchars($ann['admin_name']) ?></span>
+          <span class="ann-author"><?= htmlspecialchars($ann['admin_name'] ?? $ann['Admin_name'] ?? 'CCS Admin') ?></span>
           <span class="ann-date"><?= date('M d, Y', strtotime($ann['created_at'])) ?></span>
         </div>
         <?php if (!empty($ann['content'])): ?>
@@ -127,6 +255,15 @@ footer a:hover{color:rgba(255,255,255,0.8);}
     </div>
   </div>
 </div>
-<footer>© 2026 College of Computer Studies · University of Cebu &nbsp;|&nbsp; <a href="admin.php">Admin Login</a></footer>
+
+<footer>© 2026 College of Computer Studies · University of Cebu</footer>
+
+<script>
+function openModal()  { document.getElementById('loginModal').classList.add('open'); }
+function closeModal() { document.getElementById('loginModal').classList.remove('open'); }
+function handleOverlayClick(e) { if (e.target === document.getElementById('loginModal')) closeModal(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+<?php if ($error): ?>window.addEventListener('DOMContentLoaded', openModal);<?php endif; ?>
+</script>
 </body>
 </html>

@@ -2,13 +2,34 @@
 session_start();
 require_once 'db.php';
 
+// Handle logout first
+if (isset($_GET['logout']) && $_GET['logout'] === 'true') {
+    session_unset();
+    session_destroy();
+    header('Location: index.php');
+    exit;
+}
+
+// Also handle POST logout
+if (isset($_POST['admin_logout'])) {
+    session_unset();
+    session_destroy();
+    header('Location: index.php');
+    exit;
+}
+
 if (!isset($_SESSION['admin_logged_in']) || $_SESSION['admin_logged_in'] !== true) {
-    header('Location: admin.php');
+    header('Location: index.php');
     exit;
 }
 
 // One-time schema fix: allow NULL student_id for walk-in students
 try { $pdo->exec("ALTER TABLE sit_in_history MODIFY student_id INT NULL DEFAULT NULL"); } catch (Exception $e) {}
+
+// Schema migration: add arrived/absent columns to reservations if missing
+try { $pdo->exec("ALTER TABLE reservations ADD COLUMN arrived TINYINT(1) DEFAULT 0"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE reservations ADD COLUMN arrived_at DATETIME DEFAULT NULL"); } catch (Exception $e) {}
+try { $pdo->exec("ALTER TABLE reservations ADD COLUMN absent TINYINT(1) DEFAULT 0"); } catch (Exception $e) {}
 
 
 // ── Handle POST actions ──────────────────────────────────────
@@ -17,12 +38,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Post announcement
     if (isset($_POST['add_announcement'])) {
         $content    = trim($_POST['content'] ?? '');
-        $admin_name = $_SESSION['Admin_username'];
-        $pdo->prepare("INSERT INTO announcements (Admin_name, content) VALUES (?, ?)")
+        $admin_name = $_SESSION['admin_username'];
+        $pdo->prepare("INSERT INTO announcements (admin_name, content) VALUES (?, ?)")
             ->execute([$admin_name, $content ?: null]);
 
         // Push a notification to every student
-        $notif_msg    = '📢 New announcement from ' . $Admin_name . ($content ? ': ' . mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '…' : '') : '.');
+        $notif_msg    = '📢 New announcement from ' . $admin_name . ($content ? ': ' . mb_substr($content, 0, 100) . (mb_strlen($content) > 100 ? '…' : '') : '.');
         $all_students = $pdo->query("SELECT id FROM students")->fetchAll();
         $ins = $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)");
         foreach ($all_students as $stu) {
@@ -139,6 +160,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['reject_reservation'])) {
         $pdo->prepare("UPDATE reservations SET status='rejected' WHERE id=?")->execute([(int)$_POST['reservation_id']]);
         header('Location: admin_dashboard.php?page=reservation&msg=rejected'); exit;
+    }
+
+    // ── Lab status toggle ───────────────────────────────────────
+    if (isset($_POST['toggle_lab_status'])) {
+        $lab_name   = trim($_POST['lab_name'] ?? '');
+        $new_status = (int)($_POST['new_status'] ?? 1);
+        if ($lab_name) {
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS lab_status (lab_name VARCHAR(100) PRIMARY KEY, is_active TINYINT(1) DEFAULT 1, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+                $pdo->prepare("INSERT INTO lab_status (lab_name, is_active) VALUES (?,?) ON DUPLICATE KEY UPDATE is_active=?")->execute([$lab_name, $new_status, $new_status]);
+            } catch(Exception $e) {}
+        }
+        header('Location: admin_dashboard.php?page=reservation&msg=toggled'); exit;
+    }
+
+    // ── Lab slots update ────────────────────────────────────────
+    if (isset($_POST['update_lab_slots'])) {
+        $ln2  = trim($_POST['lab_name'] ?? '');
+        $ns   = max(1, min(500, (int)($_POST['new_slots'] ?? 50)));
+        if ($ln2) {
+            $key2 = 'slots_' . str_replace(' ', '_', $ln2);
+            try {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS system_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value VARCHAR(255) NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+                $pdo->prepare("INSERT INTO system_settings (setting_key,setting_value) VALUES (?,?) ON DUPLICATE KEY UPDATE setting_value=?")->execute([$key2, $ns, $ns]);
+            } catch(Exception $e) {}
+        }
+        header('Location: admin_dashboard.php?page=reservation'); exit;
+    }
+
+    // ── Mark arrived / absent ───────────────────────────────────
+    if (isset($_POST['mark_arrived'])) {
+        $resv_id = (int)$_POST['reservation_id'];
+        try { $pdo->prepare("UPDATE reservations SET arrived=1, arrived_at=NOW() WHERE id=?")->execute([$resv_id]); } catch(Exception $e) {}
+        header('Location: admin_dashboard.php?page=reservation&msg=arrived'); exit;
+    }
+    if (isset($_POST['mark_absent'])) {
+        $resv_id = (int)$_POST['reservation_id'];
+        try { $pdo->prepare("UPDATE reservations SET arrived=0, absent=1 WHERE id=?")->execute([$resv_id]); } catch(Exception $e) {}
+        header('Location: admin_dashboard.php?page=reservation&msg=absent'); exit;
     }
 
     // ── Toggle Reservations open/closed ────────────────────────
@@ -281,6 +341,8 @@ $flash_map = [
     'toggled'    => '✅ Reservation setting updated.',
     'sw_added'   => '✅ Software added.',
     'sw_deleted' => '✅ Software removed.',
+    'arrived'    => '✅ Session started — student has arrived.',
+    'absent'     => '✅ Student marked as absent.',
 ];
 
 // ── Fetch Software ────────────────────────────────────────────
@@ -401,8 +463,9 @@ nav{
   background:rgba(137,207,241,0.1);
 }
 
+/* Logout button styles */
 .btn-logout-nav{
-  background:#e8b800;
+  background:#e8b800 !important;
   color:#1a1a00 !important;
   font-weight:700 !important;
   border-radius:4px;
@@ -413,6 +476,13 @@ nav{
 
 .btn-logout-nav:hover{
   background:#ffd000 !important;
+  color:#1a1a00 !important;
+}
+
+/* Search / Sit-in nav links — act like buttons but styled as nav links */
+.nav-search-link,
+.nav-sitin-link{
+  cursor:pointer;
 }
 
 /* ── FLASH ── */
@@ -970,7 +1040,34 @@ thead th.sortable::after{
 <body>
 
 <!-- ══════════════ NAV ══════════════ -->
-<?php $admin_active_page = $page; require 'admin_nav.php'; ?>
+<nav>
+  <div class="nav-brand">CCS Admin Panel</div>
+  <div class="nav-links">
+    <a href="?page=home" class="<?= $page==='home'?'active':'' ?>">Home</a>
+    <a href="javascript:void(0)" onclick="openModal('searchModal')" class="nav-search-link">Search</a>
+    <a href="?page=students" class="<?= $page==='students'?'active':'' ?>">Students</a>
+    <a href="javascript:void(0)" onclick="openBlankSitin()" class="nav-sitin-link">Sit-in</a>
+    <a href="?page=records" class="<?= $page==='records'?'active':'' ?>">View History</a>
+    <a href="?page=reports" class="<?= $page==='reports'?'active':'' ?>">Reports</a>
+    <a href="?page=analytics" class="<?= $page==='analytics'?'active':'' ?>">Analytics</a>
+    <a href="?page=software" class="<?= $page==='software'?'active':'' ?>">Lab Software</a>
+    <a href="?page=testimonials" class="<?= $page==='testimonials'?'active':'' ?>">Testimonials</a>
+    <a href="?page=reservation" class="<?= $page==='reservation'?'active':'' ?>">Reservation</a>
+    
+    <!-- Logout button - POST method for security -->
+    <form method="POST" style="display:inline; margin-left:8px;">
+      <button type="submit" name="admin_logout" class="btn-logout-nav" 
+              onclick="return confirm('Are you sure you want to logout?')"
+              style="background:#e8b800; color:#1a1a00; border:none; padding:4px 12px; border-radius:4px; cursor:pointer; font-weight:700; font-size:11.5px;">
+         Logout
+      </button>
+    </form>
+    
+    <!-- Alternative GET logout (commented, using POST is more secure)
+    <a href="?logout=true" onclick="return confirm('Logout?')" class="btn-logout-nav">Logout</a>
+    -->
+  </div>
+</nav>
 
 <!-- ══════════════ BODY ══════════════ -->
 <div class="page-body">
@@ -1105,13 +1202,13 @@ thead th.sortable::after{
                 <input type="hidden" name="student_id" value="<?= $s['id'] ?>"/>
                 <button type="submit" name="delete_student" class="btn btn-red btn-sm" onclick="return confirm('Delete this student?')">Delete</button>
               </form>
-            </td>
-          </tr>
+             </td>
+           </tr>
           <?php endforeach; else: ?>
           <tr><td colspan="6" class="no-data">No students registered yet.</td></tr>
           <?php endif; ?>
         </tbody>
-      </table>
+       </table>
     </div>
   </div>
 </div>
@@ -1172,7 +1269,7 @@ thead th.sortable::after{
               <?php else: ?>
                 <span style="color:var(--gray-400);font-size:12px;">Walk-in</span>
               <?php endif; ?>
-            </td>
+             </td>
             <td><span class="badge badge-approved">Active</span></td>
             <td style="display:flex;gap:6px;flex-wrap:wrap;">
               <?php if ($stuDbId > 0): ?>
@@ -1190,13 +1287,13 @@ thead th.sortable::after{
                 <button type="submit" name="logout_sitin" class="btn btn-red btn-sm"
                   onclick="return confirm('Log out this student?')">Log Out</button>
               </form>
-            </td>
-          </tr>
+             </td>
+           </tr>
           <?php endforeach; else: ?>
           <tr><td colspan="8" class="no-data">No data available</td></tr>
           <?php endif; ?>
         </tbody>
-      </table>
+       </table>
     </div>
     <div style="padding:10px 14px;font-size:12.5px;color:var(--gray-400);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span>Showing 1 to <?= count($current_sitin) ?> of <?= count($current_sitin) ?> entr<?= count($current_sitin)===1?'y':'ies' ?></span>
@@ -1259,7 +1356,7 @@ thead th.sortable::after{
               <?php else: ?>
                 <span class="badge" style="background:#f1f5f9;color:#64748b;">Done</span>
               <?php endif; ?>
-            </td>
+             </td>
             <td>
               <?php if ($isActive): ?>
                 <form method="POST" style="display:inline;">
@@ -1270,13 +1367,13 @@ thead th.sortable::after{
               <?php else: ?>
                 <span style="font-size:12px;color:var(--gray-400);">—</span>
               <?php endif; ?>
-            </td>
-          </tr>
+             </td>
+           </tr>
           <?php endforeach; else: ?>
           <tr><td colspan="8" class="no-data">No data available</td></tr>
           <?php endif; ?>
         </tbody>
-      </table>
+       </table>
     </div>
     <div style="padding:12px 16px;border-top:1px solid var(--gray-100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="font-size:12.5px;color:var(--gray-400);" id="recordsInfo"></span>
@@ -1491,61 +1588,508 @@ thead th.sortable::after{
 
 <!-- ════════════ RESERVATION ════════════ -->
 <div id="page-reservation" class="page-section <?= $page==='reservation'?'active':'' ?>">
-  <div class="page-title">Reservations</div>
-  <div class="toolbar">
-    <form method="POST" style="display:inline;">
-      <button type="submit" name="toggle_reservations" class="btn <?= $reservations_open ? 'btn-red' : 'btn-green' ?>">
-        <?= $reservations_open ? '🔒 Disable Reservations' : '🔓 Enable Reservations' ?>
-      </button>
-    </form>
-    <span style="font-size:13px;color:var(--gray-600);margin-left:8px;">
-      Reservations are currently: <strong style="color:<?= $reservations_open ? '#16a34a' : '#dc2626' ?>;"><?= $reservations_open ? 'Open' : 'Closed' ?></strong>
-    </span>
-    <div class="toolbar-right">
-      <span style="font-size:13px;color:var(--gray-600);">Search:</span>
-      <input type="text" class="search-input" oninput="filterTable('reservTable',this.value)" placeholder=""/>
+
+<?php
+  $pending_reservations  = array_filter($reservations, fn($r) => $r['status'] === 'pending');
+  $approved_reservations = array_filter($reservations, fn($r) => $r['status'] === 'approved');
+  $rejected_reservations = array_filter($reservations, fn($r) => $r['status'] === 'rejected');
+
+  $lab_activity = [];
+  try {
+    $lab_rows = $pdo->query("SELECT laboratory, COUNT(*) as active FROM sit_in_history WHERE logout_time IS NULL AND date = CURDATE() GROUP BY laboratory")->fetchAll();
+    foreach ($lab_rows as $lr) $lab_activity[$lr['laboratory']] = (int)$lr['active'];
+  } catch(Exception $e) {}
+
+  $lab_statuses = [];
+  try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS lab_status (lab_name VARCHAR(100) PRIMARY KEY, is_active TINYINT(1) DEFAULT 1, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+    $ls_rows = $pdo->query("SELECT lab_name, is_active FROM lab_status")->fetchAll();
+    foreach ($ls_rows as $ls) $lab_statuses[$ls['lab_name']] = (bool)$ls['is_active'];
+  } catch(Exception $e) {}
+
+  $all_pc_labs   = ['Lab 524','Lab 526','Lab 528','Lab 530','Lab 542','Lab 544'];
+  $total_labs    = count($all_pc_labs);
+  $slots_per_lab = 50;
+  $system_log    = array_slice($reservations, 0, 20);
+
+  // Per-lab slot capacity stored in system_settings
+  try {
+    $pdo->exec("CREATE TABLE IF NOT EXISTS system_settings (setting_key VARCHAR(100) PRIMARY KEY, setting_value VARCHAR(255) NOT NULL, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)");
+  } catch(Exception $e){}
+  $lab_slots = [];
+  foreach ($all_pc_labs as $ln) {
+    $key = 'slots_' . str_replace(' ','_',$ln);
+    $sv = $pdo->prepare("SELECT setting_value FROM system_settings WHERE setting_key=?");
+    $sv->execute([$key]);
+    $lab_slots[$ln] = (int)($sv->fetchColumn() ?: 50);
+  }
+
+  // Fetch student profile pictures for system log avatars
+  $student_profiles = [];
+  try {
+    $sp = $pdo->query("SELECT id_number, profile_picture FROM students WHERE profile_picture IS NOT NULL AND profile_picture != ''");
+    foreach ($sp->fetchAll() as $row) $student_profiles[$row['id_number']] = $row['profile_picture'];
+  } catch(Exception $e){}
+
+  // Handle POST actions inside reservation page
+  // (All POST handlers moved to top of file to prevent headers-already-sent errors)
+?>
+
+<style>
+/* ── PAGE HEADER ── */
+.resv-page-header{margin-bottom:0;}
+.resv-page-eyebrow{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.12em;color:var(--blue);display:flex;align-items:center;gap:6px;margin-bottom:4px;}
+.resv-page-title{font-size:22px;font-weight:800;color:var(--blue-dk);letter-spacing:-0.02em;line-height:1.15;}
+.resv-refresh-btn{padding:7px 16px;border:1.5px solid var(--gray-200);border-radius:7px;background:#fff;color:var(--gray-600);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;transition:all .15s;white-space:nowrap;}
+.resv-refresh-btn:hover{border-color:var(--blue);color:var(--blue);background:var(--blue-lt);}
+
+/* ── MAIN TABLE ── */
+.resv-table{width:100%;border-collapse:separate;border-spacing:0;border:1.5px solid var(--gray-200);border-radius:12px;overflow:hidden;background:#fff;box-shadow:0 2px 12px rgba(27,88,134,0.08);}
+
+/* Header row */
+.resv-table thead tr th{
+  background:var(--blue-dk);
+  color:#fff;
+  padding:13px 18px;
+  font-size:11px;
+  font-weight:800;
+  text-transform:uppercase;
+  letter-spacing:0.1em;
+  border-right:1px solid rgba(255,255,255,0.12);
+  vertical-align:middle;
+}
+.resv-table thead tr th:last-child{border-right:none;}
+
+.th-inner{display:flex;align-items:center;gap:8px;}
+.th-badge{background:rgba(255,255,255,0.18);color:#fff;font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;margin-left:auto;white-space:nowrap;}
+.th-badge-yellow{background:rgba(254,249,195,0.25);color:#fef08a;}
+.th-badge-realtime{background:rgba(137,207,241,0.22);color:#89CFF1;font-size:9.5px;}
+
+/* Body cells */
+.resv-table tbody tr td{
+  vertical-align:top;
+  padding:16px;
+  border-right:1.5px solid var(--gray-100);
+  border-top:1.5px solid var(--gray-100);
+  background:#fff;
+  width:33.333%;
+}
+.resv-table tbody tr:first-child td{border-top:none;}
+.resv-table tbody tr td:last-child{border-right:none;}
+
+/* The single body row fills height naturally */
+.resv-table tbody tr td .col-scroll{
+  max-height:640px;
+  overflow-y:auto;
+  padding-right:3px;
+}
+.resv-table tbody tr td .col-scroll::-webkit-scrollbar{width:4px;}
+.resv-table tbody tr td .col-scroll::-webkit-scrollbar-track{background:transparent;}
+.resv-table tbody tr td .col-scroll::-webkit-scrollbar-thumb{background:var(--gray-200);border-radius:4px;}
+
+/* ── CCS LABS BANNER ── */
+.labs-total-banner{background:var(--blue-dk);border-radius:9px;padding:13px 15px;margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;}
+.labs-total-banner-left{display:flex;align-items:center;gap:11px;}
+.labs-total-banner-icon{width:36px;height:36px;background:rgba(137,207,241,0.18);border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.labs-total-banner-icon svg{width:18px;height:18px;fill:none;stroke:#89CFF1;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;}
+.labs-total-banner-eyebrow{font-size:9px;font-weight:700;color:rgba(255,255,255,0.5);text-transform:uppercase;letter-spacing:0.1em;}
+.labs-total-banner-count{font-size:17px;font-weight:800;color:#fff;line-height:1.15;}
+.labs-total-banner-sub{font-size:9.5px;color:rgba(255,255,255,0.4);margin-top:2px;}
+.labs-total-banner-num{font-size:34px;font-weight:900;color:rgba(255,255,255,0.12);letter-spacing:-2px;}
+
+/* ── LAB CARDS ── */
+.lab-card{background:#fff;border:1px solid var(--gray-200);border-radius:9px;margin-bottom:7px;position:relative;overflow:hidden;transition:border-color .15s,box-shadow .15s;}
+.lab-card:hover{border-color:var(--blue-bd);box-shadow:0 2px 8px rgba(27,88,134,0.09);}
+.lab-card-accent{position:absolute;left:0;top:0;bottom:0;width:4px;}
+.lab-card-accent-active{background:#16a34a;}
+.lab-card-accent-inactive{background:#e5e7eb;}
+.lab-card-inner{padding:11px 13px 11px 17px;}
+.lab-card-row1{display:flex;align-items:center;justify-content:space-between;}
+.lab-card-name{font-size:13px;font-weight:800;color:var(--gray-800);}
+.lab-card-floor{font-size:9px;color:var(--gray-400);text-transform:uppercase;letter-spacing:0.07em;margin-top:1px;}
+.lab-slots-row{display:flex;align-items:center;justify-content:space-between;margin-top:7px;}
+.lab-slots-text{font-size:10.5px;color:#6b7280;}
+.lab-slots-num{font-size:12px;font-weight:800;color:var(--gray-800);}
+.lab-slots-num-ok{color:var(--gray-800);}
+.lab-slots-num-warn{color:#ea580c;}
+.lab-slots-num-full{color:#dc2626;}
+.lab-slot-bar{display:none;}
+.lab-slot-bar-fill{display:none;}
+/* Editable slot capacity input */
+.lab-slots-editable{
+  width:36px;font-size:12px;font-weight:800;color:var(--blue-dk);
+  border:none;border-bottom:1.5px dashed var(--blue-bd);
+  background:transparent;text-align:center;font-family:inherit;
+  padding:0 1px;cursor:text;outline:none;
+  -moz-appearance:textfield;
+}
+.lab-slots-editable::-webkit-outer-spin-button,
+.lab-slots-editable::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+.lab-slots-editable:focus{border-bottom-color:var(--blue);background:var(--blue-lt);border-radius:3px;}
+
+/* ── PENDING QUEUE CARDS ── */
+.pq-card{background:#fff;border:1px solid var(--gray-200);border-radius:11px;padding:14px;margin-bottom:10px;box-shadow:0 1px 3px rgba(27,88,134,0.05);transition:box-shadow .15s;}
+.pq-card:hover{box-shadow:0 4px 14px rgba(27,88,134,0.10);}
+.pq-card-header{display:flex;align-items:center;gap:11px;margin-bottom:11px;}
+.pq-avatar{width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--blue),var(--blue-dk));color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.pq-name{font-size:13.5px;font-weight:800;color:var(--gray-800);}
+.pq-idnum{font-size:11px;color:var(--gray-400);margin-top:2px;}
+.pq-details{display:flex;flex-direction:column;gap:5px;margin-bottom:12px;padding:9px 11px;background:var(--gray-50);border-radius:7px;border:1px solid var(--gray-100);}
+.pq-detail-row{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--gray-600);}
+.pq-detail-icon{width:13px;height:13px;flex-shrink:0;opacity:0.55;}
+.pq-detail-val{font-weight:600;color:var(--gray-800);}
+.pq-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.pq-actions form{margin:0;}
+.pq-btn-approve{width:100%;padding:9px 0;border:none;border-radius:8px;background:#16a34a;color:#fff;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:background .15s;}
+.pq-btn-approve:hover{background:#15803d;}
+.pq-btn-decline{width:100%;padding:9px 0;border:1.5px solid #fca5a5;border-radius:8px;background:#fff;color:#dc2626;font-size:12px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;}
+.pq-btn-decline:hover{background:#fee2e2;}
+.pq-empty{text-align:center;padding:52px 16px;color:var(--gray-400);}
+
+/* ── SYSTEM LOG CARDS ── */
+.syslog-card{background:#fff;border:1px solid var(--gray-200);border-radius:10px;padding:0;margin-bottom:9px;box-shadow:0 1px 3px rgba(27,88,134,0.04);overflow:hidden;transition:border-color .15s,box-shadow .15s;}
+.syslog-card:hover{border-color:var(--blue-bd);box-shadow:0 3px 10px rgba(27,88,134,0.08);}
+/* Header strip */
+.syslog-card-header{display:flex;align-items:center;gap:10px;padding:11px 13px 10px;border-bottom:1px solid var(--gray-100);}
+.syslog-avatar{width:36px;height:36px;border-radius:50%;background:var(--blue-lt);border:2px solid var(--blue-bd);color:var(--blue-dk);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;overflow:hidden;}
+.syslog-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%;}
+.syslog-name{font-size:12.5px;font-weight:700;color:var(--gray-800);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.syslog-idnum{font-size:10.5px;color:var(--gray-400);margin-top:1px;}
+.syslog-badge-row{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:3px;}
+.syslog-time-area{margin-left:auto;text-align:right;flex-shrink:0;}
+.syslog-date-label{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:var(--gray-400);}
+.syslog-date-val{font-size:12.5px;font-weight:800;color:var(--blue-dk);}
+.syslog-time-val{font-size:10px;color:var(--gray-400);margin-top:1px;}
+.syslog-pc-tag{font-size:9.5px;color:var(--gray-400);margin-top:2px;}
+/* Detail body */
+.syslog-body{padding:8px 13px;font-size:11.5px;color:var(--gray-600);border-bottom:1px solid var(--gray-100);background:var(--gray-50);}
+.syslog-body strong{color:var(--blue-dk);}
+/* Actions footer — perfectly equal two-button grid */
+.syslog-actions{display:grid;grid-template-columns:1fr 1fr;gap:0;}
+.syslog-actions form{margin:0;}
+.syslog-btn-start{
+  width:100%;padding:8px 0;
+  border:none;border-right:1px solid var(--gray-100);
+  border-radius:0 0 0 9px;
+  background:var(--blue-dk);color:#fff;
+  font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:background .15s;
+}
+.syslog-btn-start:hover{background:var(--blue);}
+.syslog-btn-absent{
+  width:100%;padding:8px 0;
+  border:none;
+  border-radius:0 0 9px 0;
+  background:#fff;color:#dc2626;
+  font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;gap:5px;
+  transition:all .15s;
+}
+.syslog-btn-absent:hover{background:#fee2e2;}
+/* Status footer strip — full width, colored background */
+.syslog-status-done{
+  padding:8px 13px;
+  display:flex;align-items:center;gap:5px;
+  font-size:11.5px;font-weight:700;
+  border-top:1px solid var(--gray-100);
+}
+
+/* Load-more link */
+.resv-load-more{text-align:center;padding:8px 0 2px;}
+.resv-load-more span{font-size:10.5px;color:var(--gray-400);font-weight:700;letter-spacing:0.07em;text-transform:uppercase;cursor:pointer;}
+.resv-load-more span:hover{color:var(--blue);}
+
+/* badge colours */
+.badge-approved{background:#dcfce7;color:#15803d;}
+.badge-rejected{background:#fee2e2;color:#dc2626;}
+.badge-pending{background:#fef9c3;color:#854d0e;}
+.badge-waiting{background:#fef9c3;color:#854d0e;border:1px solid #fde68a;}
+.badge-scheduled{background:var(--blue-lt);color:var(--blue-dk);border:1px solid var(--blue-bd);}
+.badge-sm{font-size:9.5px;padding:2px 8px;border-radius:12px;font-weight:700;display:inline-block;letter-spacing:0.03em;}
+</style>
+
+<!-- ── PAGE HEADER ── -->
+<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:22px;flex-wrap:wrap;gap:12px;">
+  <div class="resv-page-header" style="margin-bottom:0;">
+    <div class="resv-page-eyebrow">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Reservation Management
     </div>
+    <div class="resv-page-title">System Controls</div>
   </div>
-  <div class="card">
-    <div class="table-wrap">
-      <table id="reservTable">
-        <thead>
-          <tr><th>ID</th><th>Student</th><th>ID Number</th><th>Purpose</th><th>Lab</th><th>Date</th><th>Time</th><th>Status</th><th>Actions</th></tr>
-        </thead>
-        <tbody>
-          <?php if ($reservations): foreach ($reservations as $rv): ?>
-          <tr>
-            <td><?= $rv['id'] ?></td>
-            <td><?= htmlspecialchars($rv['firstname'].' '.$rv['lastname']) ?></td>
-            <td><?= htmlspecialchars($rv['id_number']) ?></td>
-            <td><?= htmlspecialchars($rv['purpose']) ?></td>
-            <td><?= htmlspecialchars($rv['laboratory']) ?></td>
-            <td><?= htmlspecialchars($rv['date'] ?? '—') ?></td>
-            <td><?= htmlspecialchars($rv['time_in'] ?? '—') ?></td>
-            <td><span class="badge badge-<?= $rv['status'] ?>"><?= ucfirst($rv['status']) ?></span></td>
-            <td style="display:flex;gap:5px;">
-              <?php if ($rv['status'] === 'pending'): ?>
-              <form method="POST" style="display:inline;">
-                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
-                <button type="submit" name="approve_reservation" class="btn btn-green btn-sm">Approve</button>
-              </form>
-              <form method="POST" style="display:inline;">
-                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
-                <button type="submit" name="reject_reservation" class="btn btn-red btn-sm">Reject</button>
-              </form>
-              <?php else: ?>
-              <span style="font-size:12px;color:var(--gray-400);">—</span>
-              <?php endif; ?>
-            </td>
-          </tr>
-          <?php endforeach; else: ?>
-          <tr><td colspan="9" class="no-data">No reservations yet.</td></tr>
-          <?php endif; ?>
-        </tbody>
-      </table>
-    </div>
-  </div>
+  <button class="resv-refresh-btn" onclick="location.reload()">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    Refresh Data
+  </button>
 </div>
+
+<!-- ── MAIN TABLE ── -->
+<table class="resv-table">
+  <thead>
+    <tr>
+      <!-- TH 1: PC Control -->
+      <th>
+        <div class="th-inner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          CCS Laboratories
+          <span class="th-badge"><?= $total_labs ?> LABS</span>
+        </div>
+      </th>
+      <!-- TH 2: Pending Queue -->
+      <th>
+        <div class="th-inner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          Pending Queue
+          <?php if (count($pending_reservations) > 0): ?>
+          <span class="th-badge th-badge-yellow"><?= count($pending_reservations) ?> REQUEST<?= count($pending_reservations)>1?'S':'' ?></span>
+          <?php else: ?>
+          <span class="th-badge">0 REQUESTS</span>
+          <?php endif; ?>
+        </div>
+      </th>
+      <!-- TH 3: System Log -->
+      <th>
+        <div class="th-inner">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+          System Log
+          <span class="th-badge th-badge-realtime">&#9679; REAL-TIME</span>
+        </div>
+      </th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+
+      <!-- ════ TD 1: CCS Laboratories ════ -->
+      <td>
+        <div class="col-scroll">
+
+          <!-- Lab cards -->
+          <?php foreach ($all_pc_labs as $lab):
+            $slots_per_lab = $lab_slots[$lab] ?? 50;
+            $occupied  = $lab_activity[$lab] ?? 0;
+            $available = max(0, $slots_per_lab - $occupied);
+            $pct       = $slots_per_lab > 0 ? round(($occupied / $slots_per_lab) * 100) : 0;
+            $numClass  = $pct >= 90 ? 'lab-slots-num-full' : ($pct >= 60 ? 'lab-slots-num-warn' : 'lab-slots-num-ok');
+            $isActive  = $lab_statuses[$lab] ?? true;
+            $accentCls = $isActive ? 'lab-card-accent-active' : 'lab-card-accent-inactive';
+          ?>
+          <div class="lab-card">
+            <div class="lab-card-accent <?= $accentCls ?>"></div>
+            <div class="lab-card-inner">
+              <div class="lab-card-row1">
+                <div>
+                  <div class="lab-card-name"><?= htmlspecialchars($lab) ?></div>
+                  <div class="lab-card-floor">5TH FLOOR &middot; CCS</div>
+                </div>
+                <form method="POST" style="margin:0;">
+                  <input type="hidden" name="lab_name" value="<?= htmlspecialchars($lab) ?>"/>
+                  <input type="hidden" name="new_status" value="<?= $isActive ? '0' : '1' ?>"/>
+                  <?php if ($isActive): ?>
+                  <button type="submit" name="toggle_lab_status" title="Click to deactivate"
+                          onclick="return confirm('Deactivate <?= addslashes($lab) ?>?')"
+                          style="width:26px;height:26px;border-radius:50%;background:#16a34a;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;"
+                          onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                  <?php else: ?>
+                  <button type="submit" name="toggle_lab_status" title="Click to activate"
+                          onclick="return confirm('Activate <?= addslashes($lab) ?>?')"
+                          style="width:26px;height:26px;border-radius:50%;background:#fee2e2;border:2px solid #fca5a5;cursor:pointer;display:flex;align-items:center;justify-content:center;"
+                          onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="3.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                  <?php endif; ?>
+                </form>
+              </div>
+              <div class="lab-slots-row">
+                <span class="lab-slots-text">Available Slots</span>
+                <span class="lab-slots-num <?= $numClass ?>">
+                  <?= $available ?>
+                  <span style="font-size:9.5px;font-weight:500;color:#9ca3af;">OF</span>
+                  <form method="POST" style="display:inline;margin:0;">
+                    <input type="hidden" name="lab_name" value="<?= htmlspecialchars($lab) ?>"/>
+                    <input type="hidden" name="update_lab_slots" value="1"/>
+                    <input type="number" name="new_slots" value="<?= $slots_per_lab ?>"
+                           min="1" max="500" class="lab-slots-editable"
+                           title="Click to edit total slots"
+                           onblur="if(this.value!=<?= $slots_per_lab ?>)this.closest('form').submit();"
+                           onkeydown="if(event.key==='Enter'){this.closest('form').submit();event.preventDefault();}"/>
+                  </form>
+                </span>
+              </div>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
+      </td>
+
+      <!-- ════ TD 2: Pending Queue ════ -->
+      <td>
+        <div class="col-scroll">
+          <?php if (count($pending_reservations) > 0):
+            foreach ($pending_reservations as $rv): ?>
+          <div class="pq-card">
+            <div class="pq-card-header">
+              <div class="pq-avatar"><?= strtoupper(substr($rv['firstname'],0,1).substr($rv['lastname'],0,1)) ?></div>
+              <div style="flex:1;min-width:0;">
+                <div class="pq-name"><?= htmlspecialchars($rv['firstname'].' '.$rv['lastname']) ?></div>
+                <div class="pq-idnum"><?= htmlspecialchars($rv['id_number']) ?></div>
+              </div>
+            </div>
+            <div class="pq-details">
+              <div class="pq-detail-row">
+                <svg class="pq-detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/></svg>
+                <span><?= htmlspecialchars($rv['laboratory']) ?></span>
+                <?php if (!empty($rv['pc_number'])): ?>
+                <span style="margin-left:4px;font-size:10.5px;color:#9ca3af;">&middot; PC-<?= htmlspecialchars($rv['pc_number']) ?></span>
+                <?php endif; ?>
+              </div>
+              <div class="pq-detail-row">
+                <svg class="pq-detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span class="pq-detail-val"><?= htmlspecialchars($rv['time_in'] ?? '—') ?></span>
+                <span style="color:#9ca3af;font-size:10px;">&nbsp;&middot;&nbsp;</span>
+                <svg class="pq-detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <span class="pq-detail-val"><?= htmlspecialchars($rv['date'] ?? '—') ?></span>
+              </div>
+              <?php if (!empty($rv['purpose'])): ?>
+              <div class="pq-detail-row">
+                <svg class="pq-detail-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($rv['purpose']) ?></span>
+              </div>
+              <?php endif; ?>
+            </div>
+            <div class="pq-actions">
+              <form method="POST">
+                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
+                <button type="submit" name="approve_reservation" class="pq-btn-approve">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  APPROVE
+                </button>
+              </form>
+              <form method="POST">
+                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
+                <button type="submit" name="reject_reservation" class="pq-btn-decline">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  DECLINE
+                </button>
+              </form>
+            </div>
+          </div>
+          <?php endforeach;
+          else: ?>
+          <div class="pq-empty">
+            <div style="font-size:32px;margin-bottom:10px;">📭</div>
+            <div style="font-weight:700;color:#6b7280;font-size:13px;">No pending requests</div>
+            <div style="font-size:11.5px;margin-top:5px;color:#9ca3af;">All reservations have been processed.</div>
+          </div>
+          <?php endif; ?>
+        </div>
+      </td>
+
+      <!-- ════ TD 3: System Log ════ -->
+      <td>
+        <div class="col-scroll">
+          <?php if ($system_log): foreach ($system_log as $rv):
+            $isApproved = $rv['status'] === 'approved';
+            $isPending  = $rv['status'] === 'pending';
+            $isRejected = $rv['status'] === 'rejected';
+            $hasArrived = !empty($rv['arrived']) && $rv['arrived'] == 1;
+            $isAbsent   = !empty($rv['absent'])  && $rv['absent']  == 1;
+            $initials   = strtoupper(substr($rv['firstname'],0,1).substr($rv['lastname'],0,1));
+            $slBadgeCls = $isApproved ? 'badge-approved' : ($isRejected ? 'badge-rejected' : 'badge-waiting');
+            $slBadgeTxt = $isApproved ? 'APPROVED' : ($isRejected ? 'REJECTED' : 'WAITING');
+            $profilePic = $student_profiles[$rv['id_number']] ?? null;
+            $dateStr    = $rv['date'] ?? '';
+            $timeStr    = $rv['time_in'] ?? '';
+          ?>
+          <div class="syslog-card">
+            <!-- ── Header strip: avatar · name/id/badge · scheduled time ── -->
+            <div class="syslog-card-header">
+              <div class="syslog-avatar">
+                <?php if ($profilePic): ?>
+                  <img src="<?= htmlspecialchars($profilePic) ?>" alt="<?= htmlspecialchars($initials) ?>"/>
+                <?php else: ?>
+                  <?= $initials ?>
+                <?php endif; ?>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div class="syslog-name"><?= htmlspecialchars($rv['firstname'].' '.$rv['lastname']) ?></div>
+                <div class="syslog-idnum"><?= htmlspecialchars($rv['id_number']) ?></div>
+                <div class="syslog-badge-row">
+                  <span class="badge badge-sm <?= $slBadgeCls ?>"><?= $slBadgeTxt ?></span>
+                </div>
+              </div>
+              <div class="syslog-time-area">
+                <div class="syslog-date-label">SCHEDULED</div>
+                <?php if ($dateStr): ?><div class="syslog-date-val"><?= htmlspecialchars(date('M j', strtotime($dateStr))) ?></div><?php endif; ?>
+                <?php if ($timeStr): ?><div class="syslog-time-val"><?= htmlspecialchars($timeStr) ?></div><?php endif; ?>
+                <?php if (!empty($rv['pc_number'])): ?><div class="syslog-pc-tag">&#128187; PC-<?= htmlspecialchars($rv['pc_number']) ?></div><?php endif; ?>
+              </div>
+            </div>
+            <!-- ── Detail body ── -->
+            <div class="syslog-body">
+              Reservation for <strong><?= htmlspecialchars($rv['laboratory']) ?></strong>
+              <?php if ($dateStr): ?>&nbsp;&middot;&nbsp;<strong><?= htmlspecialchars(date('M j', strtotime($dateStr))) ?></strong><?php endif; ?>
+              <?php if (!empty($rv['purpose'])): ?>&nbsp;&middot;&nbsp;<?= htmlspecialchars($rv['purpose']) ?><?php endif; ?>
+            </div>
+            <!-- ── Action footer ── -->
+            <?php if ($isApproved && !$hasArrived && !$isAbsent): ?>
+            <div class="syslog-actions">
+              <form method="POST">
+                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
+                <button type="submit" name="mark_arrived" class="syslog-btn-start">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                  START SESSION
+                </button>
+              </form>
+              <form method="POST">
+                <input type="hidden" name="reservation_id" value="<?= $rv['id'] ?>"/>
+                <button type="submit" name="mark_absent" class="syslog-btn-absent" onclick="return confirm('Mark student as absent?')">
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  ABSENT
+                </button>
+              </form>
+            </div>
+            <?php elseif ($hasArrived): ?>
+            <div class="syslog-status-done" style="color:#16a34a;background:#f0fdf4;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+              Session Started
+            </div>
+            <?php elseif ($isAbsent): ?>
+            <div class="syslog-status-done" style="color:#dc2626;background:#fff5f5;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Marked Absent
+            </div>
+            <?php elseif ($isPending): ?>
+            <div class="syslog-status-done" style="color:#854d0e;background:#fefce8;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Awaiting Approval
+            </div>
+            <?php elseif ($isRejected): ?>
+            <div class="syslog-status-done" style="color:#dc2626;background:#fff5f5;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Reservation Rejected
+            </div>
+            <?php endif; ?>
+          </div>
+          <?php endforeach;
+          else: ?>
+          <div style="text-align:center;padding:40px 16px;color:#9ca3af;font-size:13px;">No reservation logs yet.</div>
+          <?php endif; ?>
+
+          <?php if (count($reservations) > 20): ?>
+          <div class="resv-load-more"><span>&#8212; Load More History &#8212;</span></div>
+          <?php endif; ?>
+        </div>
+      </td>
+
+    </tr>
+  </tbody>
+</table>
+</div><!-- end reservation page -->
+
 
 </div><!-- end page-body -->
 

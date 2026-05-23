@@ -110,7 +110,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
       <a href="#">Community <span class="chevron">▾</span></a>
     </div>
     <a href="#">About</a>
-    <a href="login.php" class="btn-login-nav">Login</a>
+    <a href="index.php" class="btn-login-nav">Login</a>
     <a href="register.php" class="btn-register-nav">Register</a>
   </div>
 </nav>
@@ -177,7 +177,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
           <a href="login.php" class="btn-back">← Back</a>
           <button type="submit" class="btn">Create Account</button>
         </div>
-        <p class="alt-line">Already have an account? <a href="login.php">Sign in</a></p>
+        <p class="alt-line">Already have an account? <a href="index.php">Sign in</a></p>
       </form>
     </div>
   </div>

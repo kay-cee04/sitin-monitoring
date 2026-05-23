@@ -1,13 +1,10 @@
 <?php
 session_start();
 
-// ── Record logout time before destroying session ──
-if (isset($_SESSION['student_id']) && isset($_SESSION['logged_in'])) {
+// ── Student logout — record sit-in logout time ────────────────────────────
+if (isset($_SESSION['student_logged_in']) && $_SESSION['student_logged_in'] === true && isset($_SESSION['student_id'])) {
     require_once 'db.php';
-    
     $student_id = (int)$_SESSION['student_id'];
-    
-    // Update the active session's logout_time
     $pdo->prepare(
         "UPDATE sit_in_history 
          SET logout_time = NOW() 
@@ -15,8 +12,7 @@ if (isset($_SESSION['student_id']) && isset($_SESSION['logged_in'])) {
     )->execute([$student_id]);
 }
 
-// ── Destroy session and redirect ──
 session_unset();
 session_destroy();
-header('Location: login.php');
+header('Location: index.php');
 exit;
