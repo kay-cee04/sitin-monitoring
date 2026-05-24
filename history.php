@@ -485,7 +485,7 @@ body.dark-mode .td-id{color:#60a5fa;}
                 <button class="btn-edit-sitin"
                   onclick="openEditSitin(<?= $r['id'] ?>,'<?= addslashes(htmlspecialchars($r['sit_purpose'])) ?>','<?= addslashes(htmlspecialchars($r['laboratory'])) ?>')"
                   title="Edit record">
-                  ✏️ Edit
+                  Edit
                 </button>
               <?php else: ?>
                 <span style="font-size:11px;color:var(--text-muted);">—</span>
@@ -729,7 +729,7 @@ document.getElementById('editSitinModal').addEventListener('click', function(e) 
 <div class="modal-overlay" id="editSitinModal">
   <div class="modal-box">
     <div class="modal-head">
-      <h3>✏️ Edit Sit-in Record</h3>
+      <h3>Edit Sit-in Record</h3>
       <button class="modal-close" onclick="closeEditSitin()">×</button>
     </div>
     <form method="POST" action="history.php">
@@ -758,7 +758,7 @@ document.getElementById('editSitinModal').addEventListener('click', function(e) 
           </select>
         </div>
         <p style="font-size:11.5px;color:var(--text-muted);margin-top:-4px;">
-          ℹ️ Only completed sit-in records can be edited. Changes will reflect in the admin panel.
+          Only completed sit-in records can be edited. Changes will reflect in the admin panel.
         </p>
       </div>
       <div class="modal-footer">

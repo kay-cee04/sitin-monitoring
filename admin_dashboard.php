@@ -277,9 +277,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // Logout a sit-in record
     if (isset($_POST['logout_sitin'])) {
+        $sitin_id  = (int)$_POST['sitin_id'];
+        $sitin_row = $pdo->prepare("SELECT student_id FROM sit_in_history WHERE id = ? AND logout_time IS NULL");
+        $sitin_row->execute([$sitin_id]);
+        $sitin_data = $sitin_row->fetch();
         $pdo->prepare("UPDATE sit_in_history SET logout_time = NOW() WHERE id = ? AND logout_time IS NULL")
-            ->execute([(int)$_POST['sitin_id']]);
-        header('Location: admin_dashboard.php?page=sitin&msg=logout'); exit;
+            ->execute([$sitin_id]);
+        if ($sitin_data && !empty($sitin_data['student_id'])) {
+            $pdo->prepare("UPDATE students SET session = GREATEST(0, session - 1) WHERE id = ?")
+                ->execute([$sitin_data['student_id']]);
+            $pdo->prepare("INSERT INTO notifications (student_id, message) VALUES (?, ?)")
+                ->execute([$sitin_data['student_id'], '📤 You have been logged out of your sit-in session by the admin.']);
+        }
+        $redirect_page = $_POST['redirect_page'] ?? 'sitin';
+        header('Location: admin_dashboard.php?page=' . $redirect_page . '&msg=logout'); exit;
     }
 
     // Edit a sit-in history record
@@ -1284,8 +1295,9 @@ thead th.sortable::after{
               </button>
               <form method="POST" style="display:inline;">
                 <input type="hidden" name="sitin_id" value="<?= $si['id'] ?>"/>
+                <input type="hidden" name="redirect_page" value="sitin"/>
                 <button type="submit" name="logout_sitin" class="btn btn-red btn-sm"
-                  onclick="return confirm('Log out this student?')">Log Out</button>
+                  onclick="return confirm('Log out this student? This will deduct 1 session.')">Log Out</button>
               </form>
              </td>
            </tr>
@@ -1308,7 +1320,7 @@ thead th.sortable::after{
 
 <!-- ════════════ RECORDS ════════════ -->
 <div id="page-records" class="page-section <?= $page==='records'?'active':'' ?>">
-  <div class="page-title">Current Sit in</div>
+  <div class="page-title">Sit-in History</div>
   <div class="toolbar">
     <div style="display:flex;align-items:center;gap:8px;">
       <select class="entries-select" id="recordsEntries" onchange="paginateRecords()">
@@ -1329,12 +1341,12 @@ thead th.sortable::after{
       <table id="recordsTable">
         <thead>
           <tr>
-            <th class="sortable">Sit ID Number</th>
             <th class="sortable">ID Number</th>
             <th class="sortable">Name</th>
             <th class="sortable">Purpose</th>
-            <th class="sortable">Sit Lab</th>
-            <th class="sortable">Session</th>
+            <th class="sortable">Lab</th>
+            <th class="sortable">Login Time</th>
+            <th class="sortable">Remaining Session</th>
             <th class="sortable">Status</th>
             <th>Actions</th>
           </tr>
@@ -1342,42 +1354,59 @@ thead th.sortable::after{
         <tbody id="recordsBody">
           <?php if ($all_sitin): foreach ($all_sitin as $r):
             $isActive = empty($r['logout_time']);
+            $recStuRow = null;
+            if (!empty($r['id_number'])) {
+                $recStuStmt = $pdo->prepare("SELECT id, session FROM students WHERE id_number = ? LIMIT 1");
+                $recStuStmt->execute([$r['id_number']]);
+                $recStuRow = $recStuStmt->fetch();
+            }
+            $recSessNum   = $recStuRow ? (int)$recStuRow['session'] : null;
+            $recSessColor = $recSessNum !== null ? ($recSessNum <= 5 ? '#dc2626' : ($recSessNum <= 10 ? '#ea580c' : '#16a34a')) : '';
+            $loginDisplay = !empty($r['login_time']) ? date('H:i:s', strtotime($r['login_time'])) : '—';
           ?>
           <tr>
-            <td><?= htmlspecialchars($r['id']) ?></td>
             <td><?= htmlspecialchars($r['id_number']) ?></td>
             <td><?= htmlspecialchars($r['fullname']) ?></td>
-            <td><?= htmlspecialchars($r['sit_purpose']) ?></td>
-            <td><?= htmlspecialchars($r['laboratory']) ?></td>
-            <td><?= htmlspecialchars($r['login_time'] ?? '—') ?></td>
+            <td><?= htmlspecialchars($r['sit_purpose'] ?: '—') ?></td>
+            <td><?= htmlspecialchars($r['laboratory'] ?: '—') ?></td>
+            <td><?= htmlspecialchars($loginDisplay) ?></td>
+            <td>
+              <?php if ($recSessNum !== null): ?>
+                <span style="font-weight:700;color:<?= $recSessColor ?>;"><?= $recSessNum ?></span>
+                <span style="font-size:11px;color:var(--gray-400);"> / 30</span>
+              <?php else: ?>
+                <span style="color:var(--gray-400);font-size:12px;">Walk-in</span>
+              <?php endif; ?>
+            </td>
             <td>
               <?php if ($isActive): ?>
                 <span class="badge badge-approved">Active</span>
               <?php else: ?>
-                <span class="badge" style="background:#f1f5f9;color:#64748b;">Done</span>
+                <span class="badge" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;">Done</span>
               <?php endif; ?>
-             </td>
+            </td>
             <td>
               <?php if ($isActive): ?>
                 <form method="POST" style="display:inline;">
                   <input type="hidden" name="sitin_id" value="<?= $r['id'] ?>"/>
+                  <input type="hidden" name="redirect_page" value="records"/>
                   <button type="submit" name="logout_sitin" class="btn btn-red btn-sm"
-                    onclick="return confirm('Log out this student?')">Log Out</button>
+                    onclick="return confirm('Log out this student? This will deduct 1 session.')">Log Out</button>
                 </form>
               <?php else: ?>
-                <span style="font-size:12px;color:var(--gray-400);">—</span>
+                <span style="font-size:13px;color:var(--gray-400);">—</span>
               <?php endif; ?>
-             </td>
-           </tr>
+            </td>
+          </tr>
           <?php endforeach; else: ?>
           <tr><td colspan="8" class="no-data">No data available</td></tr>
           <?php endif; ?>
         </tbody>
-       </table>
+      </table>
     </div>
-    <div style="padding:12px 16px;border-top:1px solid var(--gray-100);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <span style="font-size:12.5px;color:var(--gray-400);" id="recordsInfo"></span>
-      <div style="display:flex;align-items:center;gap:4px;">
+    <div style="padding:10px 14px;font-size:12.5px;color:var(--gray-400);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span id="recordsInfo"></span>
+      <div style="display:flex;align-items:center;gap:4px;margin-left:auto;">
         <button class="page-btn" onclick="goRecordsPage('first')">«</button>
         <button class="page-btn" onclick="goRecordsPage('prev')">‹</button>
         <span id="recordsPageBtns" style="display:flex;gap:4px;"></span>
@@ -2814,21 +2843,111 @@ buildChart('analyticsPieChart');
 })();
 
 // ── AI Floating Widget ────────────────────────────────────────
-var aiHistory = [];
 var aiOpen = false;
+var AI_STORAGE_KEY = 'ccs_ai_chat_history';
+
+var aiHistory = [];
+try {
+  var saved = localStorage.getItem(AI_STORAGE_KEY);
+  if (saved) aiHistory = JSON.parse(saved);
+} catch(e) { aiHistory = []; }
+
+function aiSaveHistory() {
+  try { localStorage.setItem(AI_STORAGE_KEY, JSON.stringify(aiHistory)); } catch(e) {}
+}
+
+function aiRestoreChat() {
+  if (aiHistory.length === 0) return;
+  var wrap = document.getElementById('aiMessages');
+  wrap.innerHTML = '';
+  document.getElementById('aiChips').style.display = 'none';
+  aiHistory.forEach(function(m) {
+    aiAppendMsg(m.content, m.role === 'assistant' ? 'bot' : 'user');
+  });
+}
 
 <?php
 $ai_purposes = implode(', ', array_map(fn($r) => $r['sit_purpose'].' ('.$r['cnt'].')', $purpose_rows));
+
+$pending_reservations  = count(array_filter($reservations, fn($r) => $r['status'] === 'pending'));
+$approved_reservations = count(array_filter($reservations, fn($r) => $r['status'] === 'approved'));
+$rejected_reservations = count(array_filter($reservations, fn($r) => $r['status'] === 'rejected'));
+$total_reservations    = count($reservations);
+$reservation_list      = implode('; ', array_map(
+    fn($r) => $r['firstname'].' '.$r['lastname'].' (Status: '.$r['status'].')',
+    array_slice($reservations, 0, 20)
+));
+
+$active_sitin_list = implode('; ', array_map(
+    fn($s) => $s['fullname'].' - '.($s['laboratory'] ?? '—').' - '.($s['sit_purpose'] ?? '—').' (Login: '.($s['login_time'] ?? '—').')',
+    $current_sitin
+));
+
+$low_session_students = array_filter($students, fn($s) => (int)$s['session'] <= 5);
+$low_session_list     = implode('; ', array_map(
+    fn($s) => $s['firstname'].' '.$s['lastname'].' (ID: '.$s['id_number'].', Sessions left: '.$s['session'].')',
+    array_slice($low_session_students, 0, 20)
+));
+
+$recent_sitin_list = implode('; ', array_map(
+    fn($r) => $r['fullname'].' - '.($r['sit_purpose'] ?? '—').' - '.($r['laboratory'] ?? '—').' ('.($r['logout_time'] ? 'Done' : 'Active').')',
+    array_slice($all_sitin, 0, 10)
+));
+
+$software_summary = implode(', ', array_map(
+    fn($s) => $s['software'].' ('.$s['lab_name'].')',
+    array_slice($software_list ?? [], 0, 20)
+));
+
+$announcement_list = implode('; ', array_map(
+    fn($a) => '"'.mb_substr($a['content'] ?? '', 0, 80).'" by '.$a['admin_name'],
+    array_slice($announcements, 0, 5)
+));
+
+$daily_summary = implode(', ', array_map(
+    fn($d) => $d['date'].': '.$d['cnt'].' sit-ins',
+    $daily_stats ?? []
+));
+
+$testimonials_count = count($testimonials_admin ?? []);
 ?>
-var aiSystemPrompt = "You are CCS Admin AI, a helpful assistant for the College of Computer Studies (CCS) sit-in lab management system.\n\n" +
-  "Live system data right now:\n" +
-  "- Students Registered: <?= $total_students ?>\n" +
+var aiSystemPrompt =
+  "You are CCS Admin AI, a smart assistant for the College of Computer Studies (CCS) Sit-in Monitoring System. " +
+  "You have full access to all live system data below. Answer any question the admin asks accurately using this data. " +
+  "Be concise, friendly, and direct. Always give exact numbers or names when the data is available.\n\n" +
+
+  "=== STUDENTS ===\n" +
+  "- Total Registered Students: <?= $total_students ?>\n" +
+  "- Students with 5 or fewer sessions left (<?= count($low_session_students) ?>): <?= addslashes($low_session_list ?: 'None') ?>\n\n" +
+
+  "=== CURRENT SIT-IN (Today) ===\n" +
   "- Currently Sitting In: <?= $currently_sitin ?>\n" +
-  "- Total Sit-in Records: <?= $total_sitin ?>\n" +
-  "- Top sit-in purposes: <?= addslashes($ai_purposes) ?>\n\n" +
-  "You can answer ANY question the admin asks — not just about the system. Be helpful, concise, and friendly. " +
-  "For system-related questions, use the live data above. For general questions, answer them fully. " +
-  "Format responses in plain readable text.";
+  "- Active students: <?= addslashes($active_sitin_list ?: 'No one currently sitting in') ?>\n" +
+  "- Total All-time Sit-in Records: <?= $total_sitin ?>\n" +
+  "- Top purposes: <?= addslashes($ai_purposes ?: 'No data') ?>\n" +
+  "- Recent records: <?= addslashes($recent_sitin_list ?: 'None') ?>\n\n" +
+
+  "=== RESERVATIONS ===\n" +
+  "- Total Reservations: <?= $total_reservations ?>\n" +
+  "- Pending (not yet approved): <?= $pending_reservations ?>\n" +
+  "- Approved: <?= $approved_reservations ?>\n" +
+  "- Rejected: <?= $rejected_reservations ?>\n" +
+  "- Details: <?= addslashes($reservation_list ?: 'No reservations') ?>\n\n" +
+
+  "=== ANNOUNCEMENTS ===\n" +
+  "- Total: <?= count($announcements) ?>\n" +
+  "- Recent: <?= addslashes($announcement_list ?: 'None') ?>\n\n" +
+
+  "=== LAB SOFTWARE ===\n" +
+  "- <?= addslashes($software_summary ?: 'No software recorded') ?>\n\n" +
+
+  "=== DAILY SIT-IN STATS (Last 7 days) ===\n" +
+  "- <?= addslashes($daily_summary ?: 'No data') ?>\n\n" +
+
+  "=== TESTIMONIALS ===\n" +
+  "- Total submitted: <?= $testimonials_count ?>\n\n" +
+
+  "Always answer based on the data above. If something is not in the data, say so honestly.";
 
 function aiToggle() {
   aiOpen = !aiOpen;
@@ -2855,6 +2974,7 @@ async function aiSend(prefill) {
 
   aiAppendMsg(msg, 'user');
   aiHistory.push({ role: 'user', content: msg });
+  aiSaveHistory();
 
   var typingId = aiAppendTyping();
   document.getElementById('aiSendBtn').disabled = true;
@@ -2875,6 +2995,7 @@ async function aiSend(prefill) {
     aiRemoveTyping(typingId);
     aiAppendMsg(reply, 'bot');
     aiHistory.push({ role: 'assistant', content: reply });
+    aiSaveHistory();
 
     // Show unread dot if panel is closed
     if (!aiOpen) document.getElementById('aiDot').style.display = 'block';
@@ -2922,12 +3043,16 @@ function aiRemoveTyping(id) {
 
 function aiClearChat() {
   aiHistory = [];
+  try { localStorage.removeItem(AI_STORAGE_KEY); } catch(e) {}
   document.getElementById('aiMessages').innerHTML =
     '<div class="ai-msg ai-msg-bot"><div class="ai-bubble ai-bubble-bot">' +
     '👋 Chat cleared! Ask me anything.' +
     '</div></div>';
   document.getElementById('aiChips').style.display = 'flex';
 }
+
+// Restore previous chat on page load
+aiRestoreChat();
 
 // FAB hover effect
 document.getElementById('aiFab').addEventListener('mouseenter', function(){

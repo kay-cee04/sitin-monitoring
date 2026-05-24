@@ -122,7 +122,7 @@ nav{background:var(--blue-dk);height:58px;padding:0 28px;display:flex;align-item
     </div>
     <div class="reg-body">
       <?php if ($error): ?><div class="alert alert-error">⚠️ <?= htmlspecialchars($error) ?></div><?php endif; ?>
-      <?php if ($success): ?><div class="alert alert-success">✅ <?= htmlspecialchars($success) ?> <a href="login.php" style="color:var(--green);font-weight:700;">Sign in →</a></div><?php endif; ?>
+      <?php if ($success): ?><div class="alert alert-success">✅ <?= htmlspecialchars($success) ?> <a href="index.php" style="color:var(--green);font-weight:700;">Sign in →</a></div><?php endif; ?>
       <form method="POST" action="register.php">
         <div class="section-title">Personal Information</div>
         <div class="reg-grid">
